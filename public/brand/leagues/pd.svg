@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- La Liga – Shield with star -->
+  <!-- Shield outline fill -->
+  <path d="M50 8 L84 20 L84 56 Q84 80 50 94 Q16 80 16 56 L16 20 Z"
+        fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/>
+  <!-- 5-point star -->
+  <polygon
+    points="50,28 54.8,42 69.5,42 58.2,50.8 62.4,65 50,56.5 37.6,65 41.8,50.8 30.5,42 45.2,42"
+    fill="#fff"/>
+</svg>

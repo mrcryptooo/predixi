@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Premier League – Crown mark -->
+  <!-- Three crown prongs -->
+  <rect x="14" y="62" width="72" height="11" rx="3" fill="#fff"/>
+  <!-- Crown body -->
+  <path d="M14 62 L14 50 L26 58 L50 18 L74 58 L86 50 L86 62 Z" fill="#fff"/>
+  <!-- Crown jewels -->
+  <circle cx="50" cy="52" r="4.5" fill="#3d195b"/>
+  <circle cx="29"  cy="59" r="3"   fill="#3d195b"/>
+  <circle cx="71"  cy="59" r="3"   fill="#3d195b"/>
+  <!-- Base band detail -->
+  <rect x="22" y="72" width="56" height="4" rx="2" fill="#fff" opacity="0.4"/>
+</svg>

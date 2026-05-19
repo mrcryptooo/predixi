@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- FIFA World Cup – Trophy mark -->
+  <!-- Trophy cup body -->
+  <path d="M32 12 L68 12 L62 52 Q60 64 50 68 Q40 64 38 52 Z"
+        fill="#fff"/>
+  <!-- Trophy handles -->
+  <path d="M32 14 Q14 14 14 30 Q14 46 32 46" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M68 14 Q86 14 86 30 Q86 46 68 46" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <!-- Trophy neck -->
+  <rect x="42" y="68" width="16" height="12" rx="2" fill="#fff"/>
+  <!-- Trophy base -->
+  <rect x="28" y="78" width="44" height="10" rx="4" fill="#fff"/>
+  <!-- Globe detail on cup -->
+  <circle cx="50" cy="32" r="12" fill="none" stroke="#8a6000" stroke-width="2.5" opacity="0.8"/>
+  <ellipse cx="50" cy="32" rx="7" ry="12" fill="none" stroke="#8a6000" stroke-width="2" opacity="0.8"/>
+  <line x1="38" y1="32" x2="62" y2="32" stroke="#8a6000" stroke-width="2" opacity="0.8"/>
+</svg>

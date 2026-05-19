@@ -1,0 +1,148 @@
+================================================================================
+PROJECT_TREE.txt — PrediXI
+Folder structure (excludes: node_modules, .git, .next, dist, build, coverage)
+================================================================================
+
+predixi/
+├── .env.example                         ← Template for env vars (safe to share)
+├── .env.local                           ← Real secrets (NOT committed to git)
+├── .gitignore
+├── .vercel/
+│   ├── project.json                     ← Vercel project ID and org ID
+│   └── README.txt
+├── AGENTS.md                            ← Claude Code instructions
+├── CLAUDE.md                            ← Claude Code config
+├── PROJECT_HANDOFF.md                   ← Full handoff document (just created)
+├── PROJECT_STATUS.txt                   ← Status summary (just created)
+├── PROJECT_TREE.txt                     ← This file
+├── README.md                            ← Basic readme
+├── ROADMAP.md                           ← ⚠️ OUTDATED — do not trust
+├── eslint.config.mjs                    ← ESLint config
+├── next-env.d.ts                        ← Auto-generated Next.js TS declarations
+├── next.config.ts                       ← Next.js config (minimal)
+├── package.json                         ← npm scripts + dependencies
+├── package-lock.json                    ← Locked dependency versions
+├── postcss.config.mjs                   ← PostCSS (required by Tailwind)
+├── tailwind.config.ts                   ← Tailwind CSS custom design tokens
+├── tsconfig.json                        ← TypeScript configuration
+│
+├── public/
+│   ├── brand/
+│   │   └── predixi-logo.png             ← App logo
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
+│
+├── supabase/
+│   ├── schema.sql                       ← ⭐ Full PostgreSQL database schema
+│   └── README.md                        ← Supabase setup instructions
+│
+└── src/
+    ├── app/                             ← Next.js App Router pages
+    │   ├── favicon.ico
+    │   ├── globals.css                  ← ⭐ Global CSS + custom Tailwind utilities
+    │   ├── layout.tsx                   ← ⭐ Root layout (fonts, metadata, providers)
+    │   ├── page.tsx                     ← Home page (/)
+    │   ├── providers.tsx                ← Wagmi + React Query providers
+    │   │
+    │   ├── api/
+    │   │   └── predictions/
+    │   │       └── route.ts             ← ⭐ POST/GET /api/predictions
+    │   │
+    │   ├── leaderboard/
+    │   │   └── page.tsx                 ← /leaderboard page
+    │   │
+    │   ├── matches/
+    │   │   └── page.tsx                 ← ⭐ /matches page (main prediction page)
+    │   │
+    │   ├── profile/
+    │   │   └── page.tsx                 ← /profile page
+    │   │
+    │   └── world-cup/
+    │       └── page.tsx                 ← /world-cup page
+    │
+    ├── components/
+    │   ├── gamification/
+    │   │   ├── BadgeCard.tsx            ← Badge display (earned/locked states)
+    │   │   ├── PointsCounter.tsx        ← XP counter animation
+    │   │   └── StreakBanner.tsx         ← Win streak display
+    │   │
+    │   ├── layout/
+    │   │   ├── BottomNav.tsx            ← Mobile fixed bottom navigation
+    │   │   ├── MobileHeader.tsx         ← Mobile fixed top header
+    │   │   ├── PageWrapper.tsx          ← ⭐ Shell: sidebar + mobile nav
+    │   │   └── Sidebar.tsx              ← ⭐ Desktop sidebar (nav + wallet)
+    │   │
+    │   ├── leaderboard/
+    │   │   ├── LeaderboardTable.tsx     ← Full rankings table (positions 4+)
+    │   │   ├── MiniLeaderboard.tsx      ← Compact table for home page
+    │   │   └── PodiumCard.tsx           ← Top 3 podium visual
+    │   │
+    │   ├── matches/
+    │   │   ├── LeagueFilter.tsx         ← League filter horizontal pill bar
+    │   │   ├── MatchCard.tsx            ← ⭐ Full match card component
+    │   │   └── PredictionBar.tsx        ← Community prediction % bar
+    │   │
+    │   ├── prediction/
+    │   │   ├── OutcomeButton.tsx        ← Home/Draw/Away selector button
+    │   │   ├── PointsPreview.tsx        ← XP preview in modal
+    │   │   └── PredictionModal.tsx      ← ⭐ Full prediction modal (core UX)
+    │   │
+    │   ├── profile/
+    │   │   ├── PredictionHistory.tsx    ← Prediction history list
+    │   │   ├── ProfileHeader.tsx        ← User avatar, name, rank header
+    │   │   └── StatsBar.tsx             ← Stats grid (XP, accuracy, streak)
+    │   │
+    │   ├── ui/
+    │   │   ├── Badge.tsx                ← RankBadge, MatchStatusBadge
+    │   │   ├── Button.tsx               ← Generic button component
+    │   │   ├── Card.tsx                 ← Card + AccentBar
+    │   │   └── Skeleton.tsx             ← Loading skeleton placeholder
+    │   │
+    │   ├── wallet/
+    │   │   └── ConnectWallet.tsx        ← ⭐ Wallet connect/disconnect button
+    │   │
+    │   └── world-cup/
+    │       ├── CountdownPreview.tsx     ← Compact countdown widget
+    │       ├── CountdownTimer.tsx       ← Full countdown to WC 2026
+    │       ├── GroupCard.tsx            ← World Cup group standings table
+    │       ├── WorldCupFixtureCard.tsx  ← WC match fixture card
+    │       └── WorldCupPredictionCard.tsx ← WC special prediction card
+    │
+    ├── config/
+    │   ├── attribution.ts              ← Base Builder Code (ERC-8021) setup
+    │   └── wagmi.ts                    ← ⭐ Wallet/chain configuration
+    │
+    ├── data/                           ← ⚠️ ALL MOCK/DEMO DATA (not from real API)
+    │   ├── badges.ts                   ← 18 badge definitions
+    │   ├── leaderboard.ts              ← 10 mock ranked users
+    │   ├── leagues.ts                  ← 7 league definitions
+    │   ├── matches.ts                  ← ⭐ 18 hardcoded match fixtures
+    │   ├── users.ts                    ← 10 mock user profiles
+    │   └── worldcup.ts                 ← WC 2026 demo data (12 groups, fixtures)
+    │
+    ├── lib/
+    │   ├── address.ts                  ← Ethereum address format helpers
+    │   ├── utils.ts                    ← cn() class-name merge utility
+    │   │
+    │   ├── api/
+    │   │   └── predictions.ts          ← Client-side API fetch wrapper
+    │   │
+    │   └── supabase/
+    │       ├── client.ts               ← Browser Supabase client (anon key)
+    │       ├── server.ts               ← ⭐ Server Supabase client (service role)
+    │       └── types.ts                ← TypeScript types for all DB tables
+    │
+    ├── store/
+    │   └── usePredictionStore.ts       ← ⭐ Zustand store (localStorage + sync)
+    │
+    └── types/
+        └── index.ts                    ← ⭐ All TypeScript domain type definitions
+
+================================================================================
+KEY:
+  ⭐ = Important file (read this first)
+  ⚠️ = Warning or caution needed
+================================================================================

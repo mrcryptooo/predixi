@@ -1,0 +1,157 @@
+================================================================================
+PROJECT_STATUS.txt — PrediXI
+Date: May 12, 2026
+================================================================================
+
+1. ONE-PARAGRAPH PROJECT SUMMARY
+--------------------------------------------------------------------------------
+PrediXI is a Web3 football prediction platform built for the Base App ecosystem
+(Coinbase's blockchain). Users connect a crypto wallet, predict football match
+outcomes (Home Win / Draw / Away Win), earn XP points and badges for correct
+predictions, and compete on a global leaderboard. The app is a Standard Web App
+(not a Farcaster Mini App), built with Next.js 16, TypeScript, Tailwind CSS,
+Wagmi for wallet connection, and Supabase as the database. Match data, leaderboard,
+and user profiles are currently all demo/mock data. The real Supabase backend
+exists and works for saving predictions, but pages still display hardcoded data.
+
+
+2. CURRENT STATUS
+--------------------------------------------------------------------------------
+
+COMPLETED:
+  - All 5 pages built and working: Home, Matches, Leaderboard, Profile, World Cup
+  - Full navigation: desktop sidebar + mobile header + mobile bottom nav
+  - Wallet connection: Base Account + MetaMask (wagmi + viem)
+  - Prediction modal: pick outcome, confirm, sync to Supabase
+  - Match cards with live/upcoming/finished states
+  - League + status filters on Matches page
+  - Zustand store: predictions saved to localStorage (persist across reloads)
+  - Supabase schema: 6 tables (profiles, matches, predictions, leaderboard_stats, badges, user_badges)
+  - API route POST/GET /api/predictions (working if env vars are set)
+  - Builder Code attribution prepared (ERC-8021 standard, not yet active)
+  - Vercel deployment connected
+  - 18 mock match fixtures, 5 leagues, 10 mock users, 18 badges, World Cup demo data
+
+PARTIAL:
+  - Profile page: UI complete but shows mock data, not real wallet data
+  - Leaderboard: UI complete but reads from mock file, not Supabase
+  - Home page: stats show hardcoded "usr-001" mock user, not connected wallet
+  - Prediction history: 5 hardcoded fake entries, not from database
+  - XP/points system: predictions saved but points never calculated or awarded
+  - Community percentages: hardcoded numbers, not computed from real predictions
+  - Supabase env vars may not be configured (app falls back to local-only mode)
+
+BROKEN / RISKY:
+  - SECURITY GAP: POST /api/predictions accepts any wallet address without
+    signature verification — anyone can fake predictions for any wallet
+  - ROADMAP.md is severely outdated (says pages not built — they are all built)
+  - ox package imported but not listed in package.json as direct dependency
+
+MISSING:
+  - Wallet signature verification on API
+  - Real football API integration (live match data)
+  - Match settlement system (mark result, award XP, update streak)
+  - Real leaderboard from Supabase
+  - Seed SQL for badges table
+  - Admin panel for managing matches
+  - On-chain predictions (smart contract)
+  - Base App notifications
+  - Tests of any kind
+
+
+3. NEXT 5 TASKS IN ORDER
+--------------------------------------------------------------------------------
+1. Fix security gap: add wallet signature verification to POST /api/predictions
+2. Connect Profile page to real Supabase data for connected wallet
+3. Connect Home page hero/stats to real wallet profile data
+4. Create supabase/seed.sql for badges and run it in Supabase SQL Editor
+5. Build match settlement API: set is_correct + award points after match ends
+
+
+4. BIGGEST CURRENT PROBLEM
+--------------------------------------------------------------------------------
+SECURITY: The API at /api/predictions (POST) accepts predictions for any wallet
+address without proving the caller owns that wallet. Any attacker who knows a
+wallet address (which is public on blockchain) can POST fake predictions on
+behalf of that user. This must be fixed with wallet signature verification before
+real users interact with the app.
+
+File: src/app/api/predictions/route.ts
+See TODO comment at line 9: "TODO (Phase 4D): Add wallet signature verification"
+
+
+5. FILES CHATGPT SHOULD INSPECT FIRST
+--------------------------------------------------------------------------------
+1. src/app/api/predictions/route.ts       — backend API (security risk)
+2. src/store/usePredictionStore.ts         — prediction storage logic
+3. src/components/prediction/PredictionModal.tsx — main prediction UX
+4. src/app/matches/page.tsx               — main user-facing page
+5. src/app/profile/page.tsx              — profile page (hardcoded mock data)
+6. src/config/wagmi.ts                   — wallet configuration
+7. supabase/schema.sql                   — database structure
+8. .env.example                          — required environment variables
+9. ROADMAP.md                            — READ BUT DO NOT TRUST (outdated)
+
+
+6. COMMANDS TO RUN LOCALLY
+--------------------------------------------------------------------------------
+# Install dependencies
+npm install
+
+# Run development server (then open http://localhost:3000)
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Check for code errors
+npm run lint
+
+# Set up database (in Supabase SQL Editor — not a CLI command)
+# Copy contents of supabase/schema.sql → paste in Supabase SQL Editor → Run
+
+
+7. MISSING ENVIRONMENT VARIABLES
+--------------------------------------------------------------------------------
+These 3 variables MUST be set in .env.local (local dev) and Vercel (production):
+
+  NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+  (Find in: supabase.com → Project → Settings → API → Project URL)
+
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+  (Find in: supabase.com → Project → Settings → API → anon public)
+
+  SUPABASE_SERVICE_ROLE_KEY=eyJ...
+  (Find in: supabase.com → Project → Settings → API → service_role secret)
+  *** NEVER SHARE THIS KEY — gives full database access ***
+
+Optional:
+  NEXT_PUBLIC_BASE_BUILDER_CODE=your_builder_code
+  (Find in: base.dev → Settings → Builder Code)
+
+
+8. URGENT WARNING
+--------------------------------------------------------------------------------
+⚠️  SECURITY RISK — DO NOT LAUNCH WITH REAL USERS YET
+
+The file src/app/api/predictions/route.ts accepts POST requests that claim to
+be from any wallet address WITHOUT VERIFYING the request actually comes from
+that wallet's owner.
+
+Ethereum wallet addresses are PUBLIC. Anyone can find a wallet address and
+submit fake predictions on that person's behalf.
+
+BEFORE real users use this app, you MUST add wallet signature verification:
+  1. Frontend: wallet signs a message containing the prediction details
+  2. Backend: server verifies the signature matches the claimed address
+
+This is called EIP-191 message signing and is standard practice.
+Ask ChatGPT or Claude to implement this before launch.
+
+⚠️  Also check that your SUPABASE_SERVICE_ROLE_KEY is NOT visible anywhere in
+    your git commit history. If it was ever accidentally committed, go to
+    supabase.com → Settings → API → and regenerate the key immediately.
+================================================================================

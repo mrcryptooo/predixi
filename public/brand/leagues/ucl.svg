@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- UEFA Champions League – Starball mark -->
+  <!-- 8 stars arranged around a central circle, classic UCL starball -->
+  <defs>
+    <polygon id="ucl-star"
+      points="0,-6.5 1.9,-2 6.2,-2 2.9,1.5 4.0,6.5 0,3.8 -4.0,6.5 -2.9,1.5 -6.2,-2 -1.9,-2"
+      fill="#fff"/>
+  </defs>
+  <!-- Stars at 8 compass positions (r=32 from centre) -->
+  <use href="#ucl-star" transform="translate(50,16)"/>
+  <use href="#ucl-star" transform="translate(72.6,27.4)"/>
+  <use href="#ucl-star" transform="translate(82,50)"/>
+  <use href="#ucl-star" transform="translate(72.6,72.6)"/>
+  <use href="#ucl-star" transform="translate(50,84)"/>
+  <use href="#ucl-star" transform="translate(27.4,72.6)"/>
+  <use href="#ucl-star" transform="translate(18,50)"/>
+  <use href="#ucl-star" transform="translate(27.4,27.4)"/>
+  <!-- Central football circle -->
+  <circle cx="50" cy="50" r="13" fill="none" stroke="#fff" stroke-width="4"/>
+  <circle cx="50" cy="50" r="4"  fill="#fff"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Bundesliga – Stylised football / geometric mark -->
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="40" fill="none" stroke="#fff" stroke-width="5"/>
+  <!-- Inner pentagon (classic ball centre panel) -->
+  <polygon
+    points="50,20 73.5,36.5 64.5,64 35.5,64 26.5,36.5"
+    fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Centre dot -->
+  <circle cx="50" cy="44" r="7" fill="#fff"/>
+  <!-- Three connecting lines to ring -->
+  <line x1="50"  y1="80" x2="50"  y2="90" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="14"  y1="32" x2="22"  y2="40" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="86"  y1="32" x2="78"  y2="40" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+</svg>

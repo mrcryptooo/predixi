@@ -1,26 +1,144 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    background-color: #060810;
+    color: #F0F0FF;
+    font-family: var(--font-inter), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgba(0, 82, 255, 0.35);
+    color: #F0F0FF;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #07080F;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1E2035;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4A4D65;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* gradient-primary — blue to cyan highlight */
+  .gradient-primary {
+    background: linear-gradient(135deg, #1652F0 0%, #00C2FF 100%);
+  }
+
+  /* gradient-brand and text-gradient-brand defined below in glass/gradient section */
+
+  .text-gradient-cyan {
+    background: linear-gradient(135deg, #00C2FF 0%, #1652F0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Existing glow borders (values updated to match #1652F0) ────────── */
+  .border-glow-primary {
+    border-color: rgba(22, 82, 240, 0.4);
+    box-shadow: 0 0 16px rgba(22, 82, 240, 0.18);
+  }
+
+  .border-glow-cyan {
+    border-color: rgba(0, 194, 255, 0.4);
+    box-shadow: 0 0 12px rgba(0, 194, 255, 0.15);
+  }
+
+  /* ── Glass card system ───────────────────────────────────────────────── */
+
+  /* Base glass card — blue-tinted dark surface, no blur (content cards) */
+  .glass-card {
+    background: linear-gradient(135deg, rgba(13, 15, 30, 0.95) 0%, rgba(6, 8, 16, 0.98) 100%);
+    border: 1px solid rgba(28, 32, 64, 0.9);
+    border-radius: 1rem;
+  }
+
+  /* Glowing glass card — primary blue glow accent */
+  .glass-card-glow {
+    background: linear-gradient(135deg, rgba(13, 15, 30, 0.95) 0%, rgba(6, 8, 16, 0.98) 100%);
+    border: 1px solid rgba(22, 82, 240, 0.28);
+    border-radius: 1rem;
+    box-shadow: 0 0 24px rgba(22, 82, 240, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Glass nav — for Sidebar, BottomNav, modal overlays — uses backdrop blur */
+  .glass-nav {
+    background: rgba(6, 8, 16, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-color: rgba(28, 32, 64, 0.9);
+  }
+
+  /* ── Glow utilities ──────────────────────────────────────────────────── */
+
+  /* Soft brand glow — for logo containers, hero elements */
+  .brand-glow {
+    box-shadow: 0 0 20px rgba(22, 82, 240, 0.25), 0 0 8px rgba(22, 82, 240, 0.15);
+  }
+
+  /* ── Gradient utilities ──────────────────────────────────────────────── */
+
+  /* Horizontal blue → white gradient background */
+  .blue-white-gradient {
+    background: linear-gradient(135deg, #1652F0 0%, #4d7ef7 50%, #e8eeff 100%);
+  }
+
+  /* Gradient text: blue → white */
+  .text-gradient-blue-white {
+    background: linear-gradient(135deg, #ffffff 0%, #a8c0ff 50%, #1652F0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* gradient-brand — PrediXI brand: blue → white (no purple) */
+  .gradient-brand {
+    background: linear-gradient(135deg, #1652F0 0%, #4d7ef7 60%, #e8eeff 100%);
+  }
+
+  .text-gradient-brand {
+    background: linear-gradient(135deg, #1652F0 0%, #6b9fff 55%, #ffffff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 }

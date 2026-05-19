@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Ligue 1 – Stylised cockerel (rooster) head, France football symbol -->
+  <!-- Wattle / beak area -->
+  <ellipse cx="72" cy="46" rx="9" ry="6" fill="#fff" opacity="0.7"/>
+  <!-- Beak -->
+  <polygon points="78,42 90,46 78,50" fill="#fff"/>
+  <!-- Head -->
+  <ellipse cx="55" cy="44" rx="20" ry="22" fill="#fff"/>
+  <!-- Comb (3 points on top) -->
+  <polygon points="42,24 48,10 50,22" fill="#fff"/>
+  <polygon points="50,22 55,8  57,20" fill="#fff"/>
+  <polygon points="57,20 62,12 64,23" fill="#fff"/>
+  <!-- Eye -->
+  <circle cx="62" cy="40" r="3.5" fill="#0d1b6e"/>
+  <circle cx="63" cy="39" r="1"   fill="#fff"/>
+  <!-- Neck / body -->
+  <path d="M38 62 Q30 72 32 88 L68 88 Q70 72 65 62 Q60 68 50 68 Q42 68 38 62 Z" fill="#fff"/>
+  <!-- Wing hint -->
+  <path d="M32 75 Q20 70 18 80 Q26 82 32 80 Z" fill="#fff" opacity="0.6"/>
+</svg>

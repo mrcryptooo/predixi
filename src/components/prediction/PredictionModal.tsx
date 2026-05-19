@@ -1,0 +1,460 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Lock, CheckCircle2, Clock, MapPin, Zap, CloudOff, PenLine } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { usePredictionStore } from "@/store/usePredictionStore";
+import { useAccount, useSignMessage } from "wagmi";
+import { OutcomeButton } from "./OutcomeButton";
+import { PointsPreview } from "./PointsPreview";
+import { TeamLogo } from "@/components/ui/TeamLogo";
+import { leagueMap } from "@/data/leagues";
+import { buildPredictionMessage } from "@/lib/prediction-message";
+import type { Match, MatchOutcome } from "@/types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatKickoff(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    hour12: false,
+  });
+}
+
+/** Convert app outcome to the DB code used in the signed message */
+function toDbOutcome(outcome: MatchOutcome): "H" | "D" | "A" {
+  return outcome === "home" ? "H" : outcome === "draw" ? "D" : "A";
+}
+
+const outcomeLabels: Record<MatchOutcome, string> = {
+  home: "Home Win",
+  draw: "Draw",
+  away: "Away Win",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PredictionModalProps {
+  match: Match;
+  onClose: () => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function PredictionModal({ match, onClose }: PredictionModalProps) {
+  const {
+    getPrediction,
+    setPrediction,
+    hasPredicted,
+    persistPrediction,
+    setPersistError,
+    clearPersistError,
+    persistError,
+  } = usePredictionStore();
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+
+  const existingPick  = getPrediction(match.id)?.outcome ?? null;
+  const alreadyLocked = hasPredicted(match.id);
+
+  const [selected,  setSelected]  = useState<MatchOutcome | null>(existingPick);
+  const [confirmed, setConfirmed] = useState<boolean>(alreadyLocked);
+  const [shaking,   setShaking]   = useState<boolean>(false);
+  const [syncing,   setSyncing]   = useState<boolean>(false);
+  const [signing,   setSigning]   = useState<boolean>(false);
+
+  const league = leagueMap[match.leagueId];
+
+  // ── Keyboard: Escape to close ──────────────────────────────────────────────
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
+  // ── Note on auto-sync removal ──────────────────────────────────────────────
+  // Phase 4C had an auto-sync effect that would try to push an existing local
+  // prediction to Supabase when the modal opened with a connected wallet.
+  // Phase 4D removes this: Supabase writes now require an explicit wallet
+  // signature, and silently prompting for a signature on modal open would be
+  // poor UX.  Pre-existing local predictions remain local until the user
+  // makes a new prediction on that match (not possible once locked).
+
+  // ── Confirm prediction ─────────────────────────────────────────────────────
+  async function handleConfirm() {
+    if (!selected) {
+      setShaking(true);
+      setTimeout(() => setShaking(false), 500);
+      return;
+    }
+
+    // Clear any stale error from a previous attempt before starting fresh.
+    clearPersistError();
+
+    // No wallet connected: save locally and lock immediately, no signing needed.
+    if (!isConnected || !address) {
+      setPrediction(match.id, selected);
+      setConfirmed(true);
+      return;
+    }
+
+    // Wallet connected: sign → POST → only lock on API success.
+    try {
+      setSigning(true);
+      const signedAt = new Date().toISOString();
+      const message  = buildPredictionMessage({
+        walletAddress: address,
+        matchId:       match.id,
+        outcome:       toDbOutcome(selected),
+        signedAt,
+      });
+
+      const signature = await signMessageAsync({ message });
+      setSigning(false);
+
+      // POST to API — do NOT lock until this succeeds.
+      setSyncing(true);
+      const ok = await persistPrediction(match.id, selected, address, {
+        message,
+        signature,
+        signedAt,
+      });
+      setSyncing(false);
+
+      if (ok) {
+        // API confirmed the prediction — now safe to lock locally.
+        setPrediction(match.id, selected);
+        setConfirmed(true);
+      }
+      // If !ok, persistError is already set inside persistPrediction; keep
+      // confirmed=false so user can see the error and retry.
+
+    } catch (rawErr) {
+      // signMessageAsync threw — either user rejected or wallet error.
+      // Do NOT lock: keep selected so the user can retry.
+      setSigning(false);
+      setSyncing(false);
+
+      const errMsg = rawErr instanceof Error ? rawErr.message : String(rawErr);
+
+      const isUserRejection =
+        errMsg.includes("rejected") ||
+        errMsg.includes("denied") ||
+        errMsg.includes("cancelled") ||
+        errMsg.includes("canceled") ||
+        errMsg.includes("User rejected") ||
+        errMsg.includes("user rejected");
+
+      setPersistError(
+        isUserRejection
+          ? "Signature declined — tap Confirm to try again."
+          : "Signing failed — tap Confirm to try again."
+      );
+    }
+  }
+
+  // ── Outcome selection (blocked if already confirmed) ──────────────────────
+  function handleSelect(outcome: MatchOutcome) {
+    if (confirmed) return;
+    setSelected(outcome);
+  }
+
+  const isFinished = match.status === "finished";
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+
+  return (
+    <AnimatePresence>
+      {/* Backdrop */}
+      <motion.div
+        key="backdrop"
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        aria-modal="true"
+        role="dialog"
+      >
+        <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" />
+
+        {/* Sheet / Modal panel */}
+        <motion.div
+          key="panel"
+          className={cn(
+            "relative z-10 w-full sm:max-w-lg bg-surface border border-border",
+            "rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden",
+            "max-h-[92dvh] overflow-y-auto"
+          )}
+          initial={{ opacity: 0, y: 60 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 60 }}
+          transition={{ type: "spring", stiffness: 320, damping: 32 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Live stripe */}
+          {match.status === "live" && (
+            <div className="h-0.5 w-full gradient-brand" />
+          )}
+
+          {/* ── Header ──────────────────────────────────────────────────── */}
+          <div className="flex items-start justify-between p-5 pb-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                {league && (
+                  <span className="text-xs font-mono text-text-muted">
+                    {league.logo} {league.shortName}
+                  </span>
+                )}
+                {match.status === "live" && (
+                  <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-danger">
+                    <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </div>
+              {/* Team logos + names row */}
+              <div className="flex items-center gap-2">
+                <TeamLogo src={match.homeTeam.crest} name={match.homeTeam.shortName} size="md" />
+                <div className="flex-1 min-w-0 text-center">
+                  <p className="text-[11px] font-black text-text-primary leading-tight">
+                    {match.homeTeam.shortName}
+                    <span className="text-text-muted font-normal mx-1.5">vs</span>
+                    {match.awayTeam.shortName}
+                  </p>
+                  <p className="text-[10px] text-text-muted font-mono mt-0.5 truncate">
+                    {match.homeTeam.name} · {match.awayTeam.name}
+                  </p>
+                </div>
+                <TeamLogo src={match.awayTeam.crest} name={match.awayTeam.shortName} size="md" />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-shrink-0 w-8 h-8 rounded-xl bg-elevated border border-border flex items-center justify-center text-text-muted hover:text-text-primary hover:border-primary/30 transition-colors ml-3"
+              aria-label="Close modal"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* ── Match meta ──────────────────────────────────────────────── */}
+          <div className="px-5 pb-4 flex flex-wrap gap-3 text-[11px] text-text-muted font-mono">
+            {match.status === "live" || match.status === "finished" ? (
+              <span className="flex items-center gap-1 text-text-primary font-black text-base font-mono">
+                {match.homeScore} – {match.awayScore}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <Clock size={11} />
+                {formatKickoff(match.kickoff)}
+              </span>
+            )}
+            <span className="flex items-center gap-1 truncate">
+              <MapPin size={11} />
+              {match.venue.split(",")[0]}
+            </span>
+          </div>
+
+          {/* ── Divider ─────────────────────────────────────────────────── */}
+          <div className="mx-5 border-t border-border" />
+
+          {/* ── Success / locked state ──────────────────────────────────── */}
+          {confirmed && selected ? (
+            <div className="p-5 space-y-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 22 }}
+                className="flex flex-col items-center gap-3 py-4"
+              >
+                <div className="w-14 h-14 rounded-full bg-success/15 border border-success/30 flex items-center justify-center">
+                  <CheckCircle2 size={28} className="text-success" />
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-bold text-text-primary">Prediction Locked</p>
+                  <p className="text-sm text-text-muted mt-1">
+                    You picked{" "}
+                    <span className="font-semibold text-primary">
+                      {selected === "home"
+                        ? match.homeTeam.shortName
+                        : selected === "away"
+                        ? match.awayTeam.shortName
+                        : "Draw"}
+                    </span>{" "}
+                    ({outcomeLabels[selected]})
+                  </p>
+                </div>
+              </motion.div>
+
+              <PointsPreview
+                status={match.status}
+                leagueId={match.leagueId}
+                locked
+              />
+
+              {/* Sync / profile status notice */}
+              {signing ? (
+                <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+                  <PenLine size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    Waiting for wallet signature…
+                  </p>
+                </div>
+              ) : syncing ? (
+                <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+                  <Zap size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    Saving to your PrediXI profile…
+                  </p>
+                </div>
+              ) : persistError ? (
+                <div className="flex items-start gap-2.5 rounded-xl bg-warning/8 border border-warning/20 px-4 py-3">
+                  <CloudOff size={13} className="text-warning mt-0.5 flex-shrink-0" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    {persistError}
+                  </p>
+                </div>
+              ) : isConnected ? (
+                <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+                  <Zap size={13} className="text-primary mt-0.5 flex-shrink-0" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    Saved to your PrediXI profile. On-chain proof coming soon.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+                  <Zap size={13} className="text-primary mt-0.5 flex-shrink-0" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    Saved locally. Connect your wallet to sync to your profile.
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 rounded-2xl bg-elevated border border-border text-sm font-semibold text-text-secondary hover:text-text-primary hover:border-primary/30 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+          ) : (
+            /* ── Prediction flow ──────────────────────────────────────── */
+            <div className="p-5 space-y-4">
+
+              {/* Finished / no prediction allowed notice */}
+              {isFinished && (
+                <div className="flex items-center gap-2 rounded-xl bg-elevated border border-border px-4 py-3">
+                  <Lock size={13} className="text-text-muted flex-shrink-0" />
+                  <p className="text-xs text-text-muted font-mono">
+                    This match has finished. Predictions are closed.
+                  </p>
+                </div>
+              )}
+
+              {/* Signature hint / retry error — wallet connected */}
+              {!isFinished && isConnected && (
+                persistError ? (
+                  <p className="text-[10px] text-warning/80 font-mono text-center">
+                    {persistError}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-primary/70 font-mono text-center">
+                    Your wallet will sign a message to verify this prediction.
+                  </p>
+                )
+              )}
+
+              {/* Local-only hint when no wallet */}
+              {!isFinished && !isConnected && (
+                <p className="text-[10px] text-text-muted font-mono text-center">
+                  Connect your wallet to save predictions to your profile.
+                </p>
+              )}
+
+              {/* Outcome buttons */}
+              <motion.div
+                animate={shaking ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
+                transition={{ duration: 0.45 }}
+                className="flex gap-2"
+              >
+                {(["home", "draw", "away"] as MatchOutcome[]).map((outcome) => (
+                  <OutcomeButton
+                    key={outcome}
+                    outcome={outcome}
+                    teamLabel={
+                      outcome === "home" ? match.homeTeam.shortName :
+                      outcome === "away" ? match.awayTeam.shortName :
+                      undefined
+                    }
+                    communityPct={
+                      outcome === "home" ? match.community.home :
+                      outcome === "away" ? match.community.away :
+                      match.community.draw
+                    }
+                    selected={selected === outcome}
+                    disabled={isFinished}
+                    onClick={() => handleSelect(outcome)}
+                  />
+                ))}
+              </motion.div>
+
+              {/* Points preview */}
+              {!isFinished && (
+                <PointsPreview status={match.status} leagueId={match.leagueId} />
+              )}
+
+              {/* Confirm / action button */}
+              {!isFinished ? (
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className={cn(
+                    "w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-150",
+                    selected
+                      ? "gradient-brand text-white shadow-lg hover:opacity-90"
+                      : "bg-elevated border border-border text-text-muted cursor-default"
+                  )}
+                >
+                  {selected
+                    ? `Confirm — ${selected === "home" ? match.homeTeam.shortName : selected === "away" ? match.awayTeam.shortName : "Draw"}`
+                    : "Select an outcome above"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full py-3 rounded-2xl bg-elevated border border-border text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
