@@ -44,3 +44,18 @@ next-env.d.ts
 # dist / logs
 dist
 *.log
+
+# Internal dev artifacts — not for public repo
+*_CHECKPOINT.md
+PROJECT_HANDOFF.md
+PROJECT_STATUS.txt
+PROJECT_TREE.txt
+LOCAL_QA_CHECKLIST.md
+PRE_DEPLOY_CHECKLIST.md
+FINAL_PREDEPLOY_CHECKPOINT.md
+PRODUCTION_DEPLOY_CHECKPOINT.md
+.claude/
+.agents/
+skills-lock.json
+test-sign.mjs
+test-daily-xi-e2e.mjs
