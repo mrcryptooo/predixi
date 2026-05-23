@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeRank as computeRankFromXP } from '@/lib/ranks'
+import { awardReferralBonus }               from '@/lib/referrals/awardReferralBonus'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -285,6 +286,21 @@ export async function settlePrediction(
     }
     if (xpResult.duplicate) {
       isDuplicate = true
+    }
+
+    // ── 3b. Referral bonus — 10% of earned XP to referrer (non-fatal) ────────
+    if (xpResult.success && !xpResult.duplicate && xpAwarded > 0) {
+      try {
+        await awardReferralBonus({
+          supabase,
+          referredWallet:     profile.wallet_address.toLowerCase(),
+          originalXp:         xpAwarded,
+          originalSourceType: 'match_prediction',
+          originalSourceId:   pred.id,
+        })
+      } catch (e) {
+        console.warn('[settlePrediction] referral bonus error:', e)
+      }
     }
 
     // ── 4. leaderboard_stats ─────────────────────────────────────────────────

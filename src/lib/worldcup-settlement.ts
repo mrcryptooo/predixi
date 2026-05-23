@@ -13,6 +13,7 @@
  */
 
 import { getServerSupabaseClient } from '@/lib/supabase/server'
+import { awardReferralBonus }       from '@/lib/referrals/awardReferralBonus'
 
 type Supabase = ReturnType<typeof getServerSupabaseClient>
 
@@ -179,6 +180,19 @@ export async function settleWCPrediction(
 
         if (profile?.id) {
           await incrementLeaderboardXP(supabase, profile.id as string, xpAwarded)
+        }
+
+        // ── Referral bonus — 10% of earned XP to referrer (non-fatal) ────────
+        try {
+          await awardReferralBonus({
+            supabase,
+            referredWallet:     row.wallet_address.toLowerCase(),
+            originalXp:         xpAwarded,
+            originalSourceType: 'wc_prediction',
+            originalSourceId:   row.id,
+          })
+        } catch (e) {
+          console.warn('[settleWCPrediction] referral bonus error:', e)
         }
       }
     }

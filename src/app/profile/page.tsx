@@ -15,6 +15,8 @@ import { PredictionHistory } from "@/components/profile/PredictionHistory";
 import { BadgeCard } from "@/components/gamification/BadgeCard";
 import { AccentBar } from "@/components/ui/Card";
 import { DailyXIProfileCard } from "@/components/profile/DailyXIProfileCard";
+import { ActivityFeed }       from "@/components/profile/ActivityFeed";
+import { ReferralCard }       from "@/components/profile/ReferralCard";
 import { loadAllWCPredictions, fetchWCPredictions } from "@/lib/worldcup-predictions";
 import { fetchXPEvents, XP_SOURCE_LABELS, type XPLedgerSummary } from "@/lib/xp-ledger";
 import {
@@ -124,11 +126,13 @@ function SectionHeader({ title }: { title: string }) {
 const WC_TOTAL = 21; // 5 tournament + 12 group + 4 fun
 
 function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
-  const [count, setCount] = useState<number | null>(null);
+  const [count,      setCount]      = useState<number | null>(null);
+  const [proofCount, setProofCount] = useState(0);
 
   useEffect(() => {
     // Load localStorage immediately as baseline
-    const localCount = Object.keys(loadAllWCPredictions()).length;
+    const localStore = loadAllWCPredictions();
+    const localCount = Object.keys(localStore).length;
     setCount(localCount);
 
     // If wallet connected, fetch from API and use that count (more accurate)
@@ -138,6 +142,9 @@ function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
         const remoteCount = Object.keys(remoteStore).length;
         // Use whichever is higher (local may have unsaved remote picks briefly)
         setCount(Math.max(localCount, remoteCount));
+        // Count entries with a commitment hash
+        const proofs = Object.values(remoteStore).filter(p => p.commitmentHash).length;
+        if (proofs > 0) setProofCount(proofs);
       })
       .catch(() => {/* fallback: localStorage count already set */});
   }, [walletAddress]);
@@ -161,6 +168,12 @@ function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2.5">
+          {proofCount > 0 && (
+            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20">
+              <Shield size={8} className="text-primary/60 flex-shrink-0" />
+              <span className="text-[8px] font-mono text-primary/60 font-bold">{proofCount} proof{proofCount !== 1 ? "s" : ""}</span>
+            </div>
+          )}
           {count !== null && count > 0 && (
             <div className="w-20 h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
               <div
@@ -464,9 +477,21 @@ export default function ProfilePage() {
               <XPLedgerPreview walletAddress={address} />
             </section>
 
+            {/* ── Referral Program ──────────────────────────────────────── */}
+            <section>
+              <SectionHeader title="Referral Program" />
+              <ReferralCard walletAddress={address} />
+            </section>
+
+            {/* ── Unified activity feed ─────────────────────────────────── */}
+            <section>
+              <SectionHeader title="Recent Activity" />
+              <ActivityFeed walletAddress={address!} matchMeta={matchMeta} />
+            </section>
+
             {/* ── Prediction history ────────────────────────────────────── */}
             <section>
-              <SectionHeader title="Recent Predictions" />
+              <SectionHeader title="Match Predictions" />
               <PredictionHistory entries={historyEntries} />
             </section>
           </>

@@ -17,6 +17,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { fetchStatsForPlayers }           from '@/lib/player-stats-provider'
 import { calculateDailyXIScore }          from '@/lib/daily-xi-scoring'
+import { awardReferralBonus }             from '@/lib/referrals/awardReferralBonus'
 
 const CRON_LIMIT = 25
 
@@ -200,6 +201,19 @@ export async function GET(req: NextRequest) {
 
         if (profile?.id) {
           await incrementLeaderboardXP(supabase, profile.id as string, totalXp)
+        }
+
+        // Referral bonus — 10% of Daily XI XP to referrer (non-fatal)
+        try {
+          await awardReferralBonus({
+            supabase,
+            referredWallet:     wallet,
+            originalXp:         totalXp,
+            originalSourceType: 'daily_xi',
+            originalSourceId:   entry.id,
+          })
+        } catch (e) {
+          console.warn('[cron/score-daily-xi] referral bonus error:', e)
         }
       }
 
