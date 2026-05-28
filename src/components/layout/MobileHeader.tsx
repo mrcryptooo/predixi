@@ -20,11 +20,18 @@ export function MobileHeader({ className }: MobileHeaderProps) {
 
   return (
     <header className={cn(
-      "md:hidden fixed top-0 inset-x-0 z-40 h-14",
+      "md:hidden fixed top-0 inset-x-0 z-40",
       "glass-nav border-b border-border",
-      "flex items-center px-4 gap-3",
       className
     )}>
+      {/* Status-bar safe-area spacer — fills the notch/dynamic island area
+          in Base App / Coinbase Wallet embedded webview on notched iPhones.
+          Zero height on non-notched devices and desktop. */}
+      <div className="h-safe-top" />
+
+      {/* Actual header bar — always 56px (h-14) tall */}
+      <div className="flex items-center h-14 px-4 gap-3">
+
       {/* Logo */}
       <div className={cn(
         "w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 brand-glow",
@@ -63,6 +70,8 @@ export function MobileHeader({ className }: MobileHeaderProps) {
       <span className="text-[9px] font-mono font-bold text-text-muted border border-border px-2 py-0.5 rounded-md">
         DEMO
       </span>
+
+      </div>{/* end header content row */}
     </header>
   );
 }

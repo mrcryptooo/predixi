@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('wc_predictions')
-      .select('prediction_key, prediction_type, selected_value, xp_reward, status, deadline, created_at, updated_at')
+      .select('prediction_key, prediction_type, selected_value, xp_reward, status, deadline, commitment_hash, submitted_onchain, tx_hash, created_at, updated_at')
       .eq('wallet_address', wallet.toLowerCase())
 
     if (error) {
@@ -53,14 +53,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success:     true,
       predictions: (data ?? []).map(r => ({
-        predictionKey:  r.prediction_key,
-        predictionType: r.prediction_type,
-        selectedValue:  r.selected_value as string[],
-        xpReward:       r.xp_reward,
-        status:         r.status,
-        deadline:       r.deadline,
-        createdAt:      r.created_at,
-        updatedAt:      r.updated_at,
+        predictionKey:    r.prediction_key,
+        predictionType:   r.prediction_type,
+        selectedValue:    r.selected_value as string[],
+        xpReward:         r.xp_reward,
+        status:           r.status,
+        deadline:         r.deadline,
+        commitmentHash:   r.commitment_hash   ?? null,
+        submittedOnchain: r.submitted_onchain ?? false,
+        txHash:           r.tx_hash           ?? null,
+        createdAt:        r.created_at,
+        updatedAt:        r.updated_at,
       })),
     })
   } catch (e) {
@@ -96,14 +99,29 @@ export async function POST(req: NextRequest) {
     if (!predictionKey || typeof predictionKey !== 'string' || predictionKey.trim() === '') {
       return err('predictionKey is required', 400)
     }
+    if ((predictionKey as string).trim().length > 200) {
+      return err('predictionKey must be 200 characters or fewer', 400)
+    }
     if (!predictionType || typeof predictionType !== 'string' || predictionType.trim() === '') {
       return err('predictionType is required', 400)
+    }
+    if ((predictionType as string).trim().length > 100) {
+      return err('predictionType must be 100 characters or fewer', 400)
     }
     if (!Array.isArray(selectedValue) || selectedValue.length === 0) {
       return err('selectedValue must be a non-empty array', 400)
     }
-    if (typeof xpReward !== 'number' || xpReward < 0) {
-      return err('xpReward must be a non-negative number', 400)
+    if ((selectedValue as unknown[]).length > 10) {
+      return err('selectedValue may contain at most 10 items', 400)
+    }
+    if (!(selectedValue as unknown[]).every(v => typeof v === 'string')) {
+      return err('selectedValue items must be strings', 400)
+    }
+    if (typeof xpReward !== 'number' || !Number.isFinite(xpReward) || xpReward < 0) {
+      return err('xpReward must be a non-negative finite number', 400)
+    }
+    if ((xpReward as number) > 10000) {
+      return err('xpReward must be 10000 or fewer', 400)
     }
 
     const normalizedWallet = (walletAddress as string).toLowerCase()
@@ -111,12 +129,28 @@ export async function POST(req: NextRequest) {
       ? deadline.trim()
       : null
 
-    // ── Optional wallet auth (not enforced yet) ───────────────────────────────
-    // TODO (Phase 2): reject when walletAuth.verified === false
+    // ── Mandatory wallet auth ─────────────────────────────────────────────────
+    // Requires x-wallet-message + x-wallet-signature headers.
+    // Rejects with 401 if missing or if signature does not match walletAddress.
     const walletAuth = await verifyOptionalWalletAuth(req, normalizedWallet, 'wc-prediction')
-    if (walletAuth.checked && !walletAuth.verified) {
-      console.warn('[POST /api/wc-predictions] wallet auth failed:', walletAuth.reason)
+    if (!walletAuth.verified) {
+      return NextResponse.json(
+        {
+          success:    false,
+          error:      'Wallet signature required',
+          walletAuth: { checked: true, verified: false, reason: walletAuth.reason ?? 'missing' },
+        },
+        { status: 401 },
+      )
     }
+
+    // ── Compute commitment hash before upsert — stored atomically with row ──
+    const { commitmentHash } = createWCCommitment({
+      walletAddress: normalizedWallet,
+      predictionKey: (predictionKey as string).trim(),
+      selectedValue: selectedValue as string[],
+      xpReward:      xpReward as number,
+    })
 
     // ── Upsert ───────────────────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
@@ -132,6 +166,7 @@ export async function POST(req: NextRequest) {
           xp_reward:       xpReward as number,
           status:          'pending',
           deadline:        deadlineTs,
+          commitment_hash: commitmentHash,
           updated_at:      new Date().toISOString(),
         },
         { onConflict: 'wallet_address,prediction_key' },
@@ -143,14 +178,6 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/wc-predictions]', error)
       return err('Failed to save WC prediction', 500)
     }
-
-    // Commitment hash — Phase 2: save to wc_predictions.commitment_hash after migration
-    const { commitmentHash } = createWCCommitment({
-      walletAddress: normalizedWallet,
-      predictionKey: (predictionKey as string).trim(),
-      selectedValue: selectedValue as string[],
-      xpReward:      xpReward as number,
-    })
 
     return NextResponse.json({
       success: true,

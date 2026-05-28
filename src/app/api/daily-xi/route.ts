@@ -10,7 +10,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }         from '@/lib/supabase/server'
-import { verifyOptionalWalletAuth }        from '@/lib/auth/wallet-signature'
+import { verifyBaseWalletAuth }            from '@/lib/auth/verify-base-wallet'
 import { createDailyXICommitment }        from '@/lib/onchain/commitment'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('daily_xi_entries')
-      .select('players, status, projected_max_xp, earned_xp, submitted_onchain, created_at, updated_at')
+      .select('players, status, projected_max_xp, earned_xp, submitted_onchain, commitment_hash, tx_hash, created_at, updated_at')
       .eq('wallet_address', wallet.toLowerCase())
       .eq('entry_date', date)
       .maybeSingle()
@@ -73,6 +73,8 @@ export async function GET(req: NextRequest) {
         projectedMaxXp:   data.projected_max_xp,
         earnedXp:         data.earned_xp,
         submittedOnchain: data.submitted_onchain,
+        commitmentHash:   data.commitment_hash ?? null,
+        txHash:           data.tx_hash         ?? null,
         createdAt:        data.created_at,
         updatedAt:        data.updated_at,
       },
@@ -114,12 +116,38 @@ export async function POST(req: NextRequest) {
 
     const normalizedWallet = (walletAddress as string).toLowerCase()
 
-    // ── Optional wallet auth (not enforced yet) ───────────────────────────────
-    // TODO (Phase 2): reject when walletAuth.verified === false
-    const walletAuth = await verifyOptionalWalletAuth(req, normalizedWallet, 'daily-xi')
-    if (walletAuth.checked && !walletAuth.verified) {
-      console.warn('[POST /api/daily-xi] wallet auth failed:', walletAuth.reason)
+    // ── Wallet auth — smart-wallet-compatible ────────────────────────────────
+    // Uses publicClient.verifyMessage() which supports EOA, ERC-1271, and
+    // ERC-6492 (Base Account / Coinbase Smart Wallet).  The EOA-only standalone
+    // verifyMessage() always fails for Base App wallets — do not use it here.
+    const walletAuth = await verifyBaseWalletAuth(req, normalizedWallet, 'daily-xi')
+    if (!walletAuth.verified) {
+      const reason = walletAuth.reason ?? 'missing'
+      console.warn('[POST /api/daily-xi] auth failed:', reason, 'wallet:', normalizedWallet)
+      return NextResponse.json(
+        {
+          success:    false,
+          error:      reason === 'missing-headers'
+            ? 'Wallet signature required — please sign the message in your wallet'
+            : reason === 'wallet-mismatch' || reason === 'action-mismatch'
+            ? 'Invalid signature — message does not match this wallet or action'
+            : 'Signature verification failed — please try again',
+          walletAuth: { checked: walletAuth.checked, verified: false, reason },
+        },
+        { status: 401 },
+      )
     }
+
+    // ── Compute commitment hash before upsert — stored atomically with row ──
+    const playerIds = (players as Array<Record<string, unknown>>)
+      .map(p => String(p.id ?? p.playerId ?? ''))
+      .filter(Boolean)
+    const { commitmentHash } = createDailyXICommitment({
+      walletAddress:  normalizedWallet,
+      entryDate:      date,
+      playerIds,
+      projectedMaxXp: maxXp,
+    })
 
     // ── Upsert ───────────────────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
@@ -133,6 +161,7 @@ export async function POST(req: NextRequest) {
           players:          players,
           status:           'pending',
           projected_max_xp: maxXp,
+          commitment_hash:  commitmentHash,
           updated_at:       new Date().toISOString(),
         },
         { onConflict: 'wallet_address,entry_date' },
@@ -144,17 +173,6 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/daily-xi]', error)
       return err('Failed to save Daily XI entry', 500)
     }
-
-    // Commitment hash — Phase 2: save to daily_xi_entries.commitment_hash after migration
-    const playerIds = (players as Array<Record<string, unknown>>)
-      .map(p => String(p.id ?? p.playerId ?? ''))
-      .filter(Boolean)
-    const { commitmentHash } = createDailyXICommitment({
-      walletAddress:  normalizedWallet,
-      entryDate:      date,
-      playerIds,
-      projectedMaxXp: maxXp,
-    })
 
     return NextResponse.json({
       success: true,

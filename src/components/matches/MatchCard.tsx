@@ -64,19 +64,21 @@ export function MatchCard({
   className,
   animationDelay = 0,
 }: MatchCardProps) {
-  const league     = leagueMap[match.leagueId];
-  const isFinished = match.status === "finished";
-  const isLive     = match.status === "live";
-  const isUpcoming = match.status === "upcoming";
-  const hasPick    = userPick !== undefined;
-  const canPredict = !isFinished && !!onPredict;
+  const league          = leagueMap[match.leagueId];
+  const isFinished      = match.status === "finished";
+  const isLive          = match.status === "live";
+  const isUpcoming      = match.status === "upcoming";
+  const isPastKickoff   = Date.now() >= new Date(match.kickoff).getTime();
+  // isLocked: backend enforces kickoff lock; client check is UX-only
+  const isLocked        = isFinished || isLive || isPastKickoff;
+  const hasPick         = userPick !== undefined;
+  const canPredict      = !isLocked && !!onPredict;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.38, ease: "easeOut", delay: animationDelay }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      transition={{ duration: 0.35, ease: "easeOut", delay: animationDelay }}
       className={className}
     >
       <div className={cn(
@@ -235,7 +237,7 @@ export function MatchCard({
           {/* ── CTA ──────────────────────────────────────────────────────── */}
           {isFinished ? (
 
-            /* Finished — locked */
+            /* Finished — full time */
             <div className={cn(
               "flex items-center justify-center gap-2 py-3 rounded-2xl",
               "bg-white/[0.03] border border-white/[0.07]"
@@ -243,6 +245,19 @@ export function MatchCard({
               <Lock size={11} className="text-white/20" />
               <span className="text-[11px] text-white/25 font-mono font-semibold tracking-wide">
                 Full Time · Predictions Closed
+              </span>
+            </div>
+
+          ) : isLocked ? (
+
+            /* Locked after kickoff (live or past-kickoff upcoming) */
+            <div className={cn(
+              "flex items-center justify-center gap-2 py-3 rounded-2xl",
+              "bg-white/[0.03] border border-white/[0.07]"
+            )}>
+              <Lock size={11} className="text-white/20" />
+              <span className="text-[11px] text-white/25 font-mono font-semibold tracking-wide">
+                Locked after kickoff
               </span>
             </div>
 

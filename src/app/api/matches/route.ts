@@ -17,6 +17,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }         from '@/lib/supabase/server'
+import { MATCH_STATUS_ORDER }              from '@/lib/football/status'
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status })
@@ -75,11 +76,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // ── Filter: drop rows with null/empty kickoff (shouldn't reach DB, but guard here) ──
+  rows = rows.filter(m => m.kickoff && typeof m.kickoff === 'string' && m.kickoff.trim() !== '')
+
   // ── Sort: live first, then kickoff ASC ─────────────────────────────────────
-  const statusOrder: Record<string, number> = { live: 0, upcoming: 1, postponed: 2, finished: 3 }
   rows = [...rows].sort((a, b) => {
-    const sa = statusOrder[a.status as string] ?? 9
-    const sb = statusOrder[b.status as string] ?? 9
+    const sa = MATCH_STATUS_ORDER[a.status as keyof typeof MATCH_STATUS_ORDER] ?? 9
+    const sb = MATCH_STATUS_ORDER[b.status as keyof typeof MATCH_STATUS_ORDER] ?? 9
     if (sa !== sb) return sa - sb
     return (a.kickoff as string) < (b.kickoff as string) ? -1 : 1
   })

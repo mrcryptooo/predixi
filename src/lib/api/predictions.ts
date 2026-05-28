@@ -19,12 +19,15 @@ import type { DbOutcome } from '@/lib/supabase/types'
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ApiPrediction = {
-  id: string
-  matchId: string
-  outcome: DbOutcome
-  placedAt: string
-  pointsAwarded: number | null
-  isCorrect: boolean | null
+  id:               string
+  matchId:          string
+  outcome:          DbOutcome
+  placedAt:         string
+  pointsAwarded:    number | null
+  isCorrect:        boolean | null
+  commitmentHash:   string | null
+  submittedOnchain: boolean
+  txHash:           string | null
 }
 
 export type ApiProfile = {
@@ -39,7 +42,7 @@ export type ApiProfile = {
 
 export type SubmitPredictionResult =
   | { success: true;  prediction: ApiPrediction; profile: ApiProfile }
-  | { success: false; error: string }
+  | { success: false; error: string; locked?: boolean; kickoffTime?: string }
 
 export type GetPredictionsResult =
   | { success: true;  predictions: ApiPrediction[] }
@@ -88,7 +91,12 @@ export async function submitPredictionToApi(params: {
     const data = await res.json()
 
     if (!res.ok || !data.success) {
-      return { success: false, error: data.error ?? 'Server error' }
+      return {
+        success:     false,
+        error:       data.error ?? 'Server error',
+        locked:      data.locked === true,
+        kickoffTime: typeof data.kickoffTime === 'string' ? data.kickoffTime : undefined,
+      }
     }
 
     return { success: true, prediction: data.prediction, profile: data.profile }

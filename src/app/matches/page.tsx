@@ -339,7 +339,7 @@ export default function MatchesPage() {
                       match={match}
                       userPick={pick}
                       onPredict={setActiveModal}
-                      animationDelay={i * 0.04}
+                      animationDelay={Math.min(i * 0.04, 0.22)}
                     />
                   );
                 })}

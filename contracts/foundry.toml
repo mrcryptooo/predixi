@@ -1,0 +1,20 @@
+[profile.default]
+src             = "src"
+out             = "out"
+libs            = ["lib"]
+test            = "test"
+solc            = "0.8.25"
+optimizer       = true
+optimizer_runs  = 200
+
+# ── Remappings ──────────────────────────────────────────────────────────────
+# forge-std is installed via: forge install foundry-rs/forge-std
+# Run this once from the contracts/ directory before running tests.
+
+[fuzz]
+runs = 256
+
+[fmt]
+line_length     = 100
+tab_width       = 4
+bracket_spacing = true

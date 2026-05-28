@@ -126,11 +126,20 @@ export async function POST(req: NextRequest) {
     if (!sourceId || typeof sourceId !== 'string' || sourceId.trim() === '') {
       return err('sourceId is required', 400)
     }
-    if (typeof xpAmount !== 'number') {
-      return err('xpAmount must be a number', 400)
+    if ((sourceId as string).trim().length > 200) {
+      return err('sourceId must be 200 characters or fewer', 400)
+    }
+    if (typeof xpAmount !== 'number' || !Number.isFinite(xpAmount)) {
+      return err('xpAmount must be a finite number', 400)
+    }
+    if ((xpAmount as number) < -1000 || (xpAmount as number) > 10000) {
+      return err('xpAmount must be between -1000 and 10000', 400)
     }
     if (!reason || typeof reason !== 'string' || reason.trim() === '') {
       return err('reason is required', 400)
+    }
+    if ((reason as string).trim().length > 500) {
+      return err('reason must be 500 characters or fewer', 400)
     }
 
     const normalizedWallet = (walletAddress as string).toLowerCase()

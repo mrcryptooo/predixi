@@ -20,6 +20,12 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { ProxyAgent, fetch as undiciF }   from 'undici'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import {
+  normalizeFdStatus,
+  normalizeApfStatus,
+  inferOutcome,
+  validateFixture,
+}                                         from '@/lib/football/status'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -66,25 +72,6 @@ function parseMatchday(round: string | null | undefined): number | null {
   const m = round.match(/(\d+)/); return m ? parseInt(m[1], 10) : null
 }
 
-function fdMapStatus(s: string): string {
-  if (s === 'FINISHED')                                    return 'finished'
-  if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(s))       return 'live'
-  if (['POSTPONED', 'SUSPENDED', 'CANCELLED'].includes(s)) return 'postponed'
-  return 'upcoming'
-}
-
-function apfMapStatus(s: string): string {
-  if (['FT', 'AET', 'PEN'].includes(s))                        return 'finished'
-  if (['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE'].includes(s)) return 'live'
-  if (['PST', 'CANC', 'ABD', 'WO', 'AWD', 'INT'].includes(s))  return 'postponed'
-  return 'upcoming'
-}
-
-function inferOutcome(h: number | null, a: number | null, status: string): string | null {
-  if (status !== 'finished' || h === null || a === null) return null
-  return h > a ? 'H' : a > h ? 'A' : 'D'
-}
-
 // ── Upsert ────────────────────────────────────────────────────────────────────
 
 type MatchRow = {
@@ -97,7 +84,7 @@ type MatchRow = {
   actual_outcome: string | null; updated_at: string
 }
 
-type Stats = { inserted: number; updated: number; skipped: number; errors: string[] }
+type Stats = { inserted: number; updated: number; skipped: number; invalid: number; errors: string[] }
 
 async function upsertMatch(
   supabase: ReturnType<typeof getServerSupabaseClient>,
@@ -138,9 +125,9 @@ async function syncFD(
       const data = await res.json() as { matches?: FdMatch[]; error?: string }
       if (data.error)         { stats.errors.push(`fd [${comp}]: ${data.error}`); continue }
       for (const m of data.matches ?? []) {
-        const status = fdMapStatus(m.status)
+        const status = normalizeFdStatus(m.status)
         const h = m.score.fullTime.home, a = m.score.fullTime.away
-        await upsertMatch(supabase, {
+        const row = {
           id:              `fd-${m.id}`,
           league_id:       comp,
           home_team_id:    `fd-team-${m.homeTeam.id}`,
@@ -154,7 +141,14 @@ async function syncFD(
           matchday: m.matchday ?? null, venue: m.venue ?? null,
           actual_outcome: inferOutcome(h, a, status),
           updated_at: new Date().toISOString(),
-        }, stats)
+        }
+        const check = validateFixture({
+          id: row.id, kickoff: row.kickoff,
+          homeTeamId: row.home_team_id, homeTeamName: row.home_team_name,
+          awayTeamId: row.away_team_id, awayTeamName: row.away_team_name,
+        })
+        if (!check.valid) { stats.invalid++; stats.errors.push(check.reason); continue }
+        await upsertMatch(supabase, row, stats)
       }
     } catch (e) {
       stats.errors.push(`fd [${comp}]: ${e instanceof Error ? e.message : String(e)}`)
@@ -188,9 +182,9 @@ async function syncAPF(
       const hasErr = Array.isArray(data.errors) ? data.errors.length > 0 : !!data.errors
       if (hasErr)             { stats.errors.push(`apf [${league.code}]: API error`); continue }
       for (const fx of data.response ?? []) {
-        const status = apfMapStatus(fx.fixture.status.short)
+        const status = normalizeApfStatus(fx.fixture.status.short)
         const h = fx.goals.home, a = fx.goals.away
-        await upsertMatch(supabase, {
+        const row = {
           id:              `apf-${fx.fixture.id}`,
           league_id:       league.code,
           home_team_id:    `apf-team-${fx.teams.home.id}`,
@@ -204,7 +198,14 @@ async function syncAPF(
           matchday: parseMatchday(fx.league.round), venue: fx.fixture.venue.name ?? null,
           actual_outcome: inferOutcome(h, a, status),
           updated_at: new Date().toISOString(),
-        }, stats)
+        }
+        const check = validateFixture({
+          id: row.id, kickoff: row.kickoff,
+          homeTeamId: row.home_team_id, homeTeamName: row.home_team_name,
+          awayTeamId: row.away_team_id, awayTeamName: row.away_team_name,
+        })
+        if (!check.valid) { stats.invalid++; stats.errors.push(check.reason); continue }
+        await upsertMatch(supabase, row, stats)
       }
     } catch (e) {
       stats.errors.push(`apf [${league.code}]: ${e instanceof Error ? e.message : String(e)}`)
@@ -258,7 +259,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = dateStr(today)
   const dateTo   = dateStr(addDays(today, SYNC_DAYS))
 
-  const stats: Stats = { inserted: 0, updated: 0, skipped: 0, errors: [] }
+  const stats: Stats = { inserted: 0, updated: 0, skipped: 0, invalid: 0, errors: [] }
   let apiCallsUsed = 0
   const sources: string[] = []
 
@@ -305,6 +306,7 @@ export async function GET(req: NextRequest) {
       inserted:     stats.inserted,
       updated:      stats.updated,
       skipped:      stats.skipped,
+      invalid:      stats.invalid,
       errorCount:   stats.errors.length,
     },
     hasErrors ? stats.errors.slice(0, 5).join(' | ') : undefined,
@@ -320,6 +322,7 @@ export async function GET(req: NextRequest) {
     inserted:     stats.inserted,
     updated:      stats.updated,
     skipped:      stats.skipped,
+    invalid:      stats.invalid,
     errors:       hasErrors ? stats.errors : undefined,
   })
 }

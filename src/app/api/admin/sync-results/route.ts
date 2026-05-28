@@ -13,6 +13,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import { normalizeFdStatus, normalizeApfStatus } from '@/lib/football/status'
 
 const CANDIDATE_LIMIT = 20
 
@@ -30,13 +31,6 @@ function inferOutcome(home: number, away: number): 'H' | 'D' | 'A' {
 
 // ── football-data.org ──────────────────────────────────────────────────────────
 
-function fdMapStatus(s: string): string {
-  if (s === 'FINISHED')                                    return 'finished'
-  if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(s))       return 'live'
-  if (['POSTPONED', 'SUSPENDED', 'CANCELLED'].includes(s)) return 'postponed'
-  return 'upcoming'
-}
-
 async function fetchFdMatch(numericId: string, token: string): Promise<ApiResult> {
   const url = `https://api.football-data.org/v4/matches/${numericId}`
   try {
@@ -48,7 +42,7 @@ async function fetchFdMatch(numericId: string, token: string): Promise<ApiResult
       score:  { fullTime: { home: number | null; away: number | null } }
     }
     return {
-      status:    fdMapStatus(data.status),
+      status:    normalizeFdStatus(data.status),
       homeScore: data.score.fullTime.home,
       awayScore: data.score.fullTime.away,
     }
@@ -58,13 +52,6 @@ async function fetchFdMatch(numericId: string, token: string): Promise<ApiResult
 }
 
 // ── api-football (api-sports.io) ───────────────────────────────────────────────
-
-function apfMapStatus(s: string): string {
-  if (['FT', 'AET', 'PEN'].includes(s))                            return 'finished'
-  if (['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE'].includes(s))   return 'live'
-  if (['PST', 'CANC', 'ABD', 'WO', 'AWD', 'INT'].includes(s))     return 'postponed'
-  return 'upcoming'
-}
 
 async function fetchApfFixture(numericId: string, apiKey: string): Promise<ApiResult> {
   const url = `https://v3.football.api-sports.io/fixtures?id=${numericId}`
@@ -81,7 +68,7 @@ async function fetchApfFixture(numericId: string, apiKey: string): Promise<ApiRe
     const fixture = data.response?.[0]
     if (!fixture) return { error: 'No data returned' }
     return {
-      status:    apfMapStatus(fixture.fixture.status.short),
+      status:    normalizeApfStatus(fixture.fixture.status.short),
       homeScore: fixture.goals.home,
       awayScore: fixture.goals.away,
     }

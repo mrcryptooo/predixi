@@ -33,7 +33,7 @@ export function BottomNav() {
               href={href}
               className={cn(
                 "relative flex-1 flex flex-col items-center justify-center gap-0.5",
-                "transition-all duration-150",
+                "transition-all duration-150 select-none",
                 active ? "text-primary" : "text-text-muted hover:text-text-secondary"
               )}
             >

@@ -142,7 +142,7 @@ export function PredictionHistory({ entries }: PredictionHistoryProps) {
       </div>
 
       {entries.map((entry, i) => (
-        <HistoryRow key={entry.id} entry={entry} delay={i * 0.05} />
+        <HistoryRow key={entry.id} entry={entry} delay={Math.min(i * 0.05, 0.25)} />
       ))}
     </div>
   );

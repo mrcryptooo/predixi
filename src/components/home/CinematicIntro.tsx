@@ -88,7 +88,7 @@ export function CinematicIntro() {
   const glowDelay = ballDelay + ballDuration * 0.75;
 
   return (
-    <section className="relative w-full min-h-[100dvh] overflow-hidden bg-black flex items-end justify-center">
+    <section className="relative w-full min-h-mobile-screen-safe sm:min-h-screen overflow-hidden bg-black flex items-end justify-center">
 
       {/* ── Scene 1: Stadium ── */}
       <motion.div
@@ -168,7 +168,7 @@ export function CinematicIntro() {
 
       {/* ── PREDICT NOW + CTA ── */}
       <motion.div
-        className="relative z-20 flex flex-col items-center gap-5 pb-14 px-6 text-center"
+        className="relative z-20 flex flex-col items-center gap-5 pb-mobile-action px-6 text-center sm:pb-14"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: E, delay: 2.2 }}

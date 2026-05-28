@@ -5,6 +5,7 @@ import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { Wallet, ChevronDown, LogOut, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { truncateAddress } from '@/lib/address'
+import { isBaseApp, markIntentionalDisconnect, clearIntentionalDisconnect } from '@/lib/base-app'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ConnectWallet
@@ -23,8 +24,14 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
   const { disconnect } = useDisconnect()
 
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied,       setCopied]       = useState(false)
+  // mounted prevents a hydration mismatch: server always renders "disconnected",
+  // but the client may reconnect immediately from wagmi storage.  Rendering a
+  // neutral placeholder until after mount eliminates the flash.
+  const [mounted,      setMounted]      = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setMounted(true) }, [])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -50,11 +57,25 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
 
   // ── Connect — prefer baseAccount, fall back to injected ─────────────────────
   function handleConnect() {
+    // Clear intentional-disconnect flag so auto-reconnect resumes after this session
+    clearIntentionalDisconnect()
     const preferred =
       connectors.find((c) => c.id === 'baseAccount') ??
       connectors.find((c) => c.id === 'injected') ??
       connectors[0]
     if (preferred) connect({ connector: preferred })
+  }
+
+  // ── Pre-mount placeholder — avoids hydration mismatch ──────────────────────
+  // Render a same-size neutral skeleton until wagmi has hydrated on the client.
+  if (!mounted) {
+    return (
+      <div className={cn(
+        'rounded-xl border border-white/[0.07] bg-white/[0.03] animate-pulse',
+        compact ? 'h-[30px] w-[80px]' : 'h-[42px] w-[180px]',
+        className,
+      )} />
+    )
   }
 
   // ── Disconnected state ───────────────────────────────────────────────────────
@@ -75,7 +96,14 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
         )}
       >
         <Wallet size={compact ? 13 : 15} strokeWidth={2.2} className="flex-shrink-0" />
-        {isPending ? 'Connecting…' : compact ? 'Connect' : 'Connect Base Account'}
+        {isPending
+          ? 'Connecting…'
+          : compact
+            ? 'Connect'
+            : isBaseApp()
+              ? 'Connect via Base'
+              : 'Connect Wallet'
+        }
       </button>
     )
   }
@@ -146,7 +174,7 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
 
           {/* Disconnect */}
           <button
-            onClick={() => { disconnect(); setDropdownOpen(false) }}
+            onClick={() => { markIntentionalDisconnect(); disconnect(); setDropdownOpen(false) }}
             className={cn(
               'w-full flex items-center gap-2.5 px-3 py-2.5 mb-1',
               'text-[12px] text-danger/80 hover:text-danger hover:bg-danger/5',

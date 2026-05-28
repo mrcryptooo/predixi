@@ -16,6 +16,12 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { ProxyAgent, fetch as undiciF }   from 'undici'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import {
+  normalizeFdStatus,
+  normalizeApfStatus,
+  inferOutcome,
+  validateFixture,
+}                                         from '@/lib/football/status'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -74,27 +80,6 @@ function parseMatchday(round: string | null | undefined): number | null {
   return m ? parseInt(m[1], 10) : null
 }
 
-// ── Status normalisation ───────────────────────────────────────────────────────
-
-function fdMapStatus(s: string): string {
-  if (s === 'FINISHED')                                   return 'finished'
-  if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(s))      return 'live'
-  if (['POSTPONED', 'SUSPENDED', 'CANCELLED'].includes(s)) return 'postponed'
-  return 'upcoming'
-}
-
-function apfMapStatus(s: string): string {
-  if (['FT', 'AET', 'PEN'].includes(s))                       return 'finished'
-  if (['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE'].includes(s)) return 'live'
-  if (['PST', 'CANC', 'ABD', 'WO', 'AWD', 'INT'].includes(s)) return 'postponed'
-  return 'upcoming'
-}
-
-function inferOutcome(h: number | null, a: number | null, status: string): string | null {
-  if (status !== 'finished' || h === null || a === null) return null
-  return h > a ? 'H' : a > h ? 'A' : 'D'
-}
-
 // ── Supabase upsert ───────────────────────────────────────────────────────────
 
 type MatchRow = {
@@ -116,7 +101,7 @@ type MatchRow = {
   updated_at:      string
 }
 
-type UpsertStats = { inserted: number; updated: number; skipped: number; errors: string[] }
+type UpsertStats = { inserted: number; updated: number; skipped: number; invalid: number; errors: string[] }
 
 async function upsertMatch(
   supabase: ReturnType<typeof getServerSupabaseClient>,
@@ -196,7 +181,7 @@ async function syncFootballData(
     }
 
     for (const m of matches) {
-      const status = fdMapStatus(m.status)
+      const status = normalizeFdStatus(m.status)
       const h = m.score.fullTime.home
       const a = m.score.fullTime.away
       const row: MatchRow = {
@@ -217,6 +202,12 @@ async function syncFootballData(
         actual_outcome:  inferOutcome(h, a, status),
         updated_at:      new Date().toISOString(),
       }
+      const check = validateFixture({
+        id: row.id, kickoff: row.kickoff,
+        homeTeamId: row.home_team_id, homeTeamName: row.home_team_name,
+        awayTeamId: row.away_team_id, awayTeamName: row.away_team_name,
+      })
+      if (!check.valid) { stats.invalid++; stats.errors.push(check.reason); continue }
       await upsertMatch(supabase, row, stats)
     }
   }
@@ -268,7 +259,7 @@ async function syncApiFootball(
     }
 
     for (const fx of fixtures) {
-      const status = apfMapStatus(fx.fixture.status.short)
+      const status = normalizeApfStatus(fx.fixture.status.short)
       const h = fx.goals.home
       const a = fx.goals.away
       const row: MatchRow = {
@@ -289,6 +280,12 @@ async function syncApiFootball(
         actual_outcome:  inferOutcome(h, a, status),
         updated_at:      new Date().toISOString(),
       }
+      const check = validateFixture({
+        id: row.id, kickoff: row.kickoff,
+        homeTeamId: row.home_team_id, homeTeamName: row.home_team_name,
+        awayTeamId: row.away_team_id, awayTeamName: row.away_team_name,
+      })
+      if (!check.valid) { stats.invalid++; stats.errors.push(check.reason); continue }
       await upsertMatch(supabase, row, stats)
     }
   }
@@ -310,7 +307,7 @@ export async function POST(req: NextRequest) {
   const dateTo   = dateStr(addDays(today, SYNC_DAYS))
 
   const supabase = getServerSupabaseClient()
-  const stats: UpsertStats = { inserted: 0, updated: 0, skipped: 0, errors: [] }
+  const stats: UpsertStats = { inserted: 0, updated: 0, skipped: 0, invalid: 0, errors: [] }
   let apiCallsUsed = 0
   const sources: string[] = []
 
@@ -344,6 +341,7 @@ export async function POST(req: NextRequest) {
     inserted:     stats.inserted,
     updated:      stats.updated,
     skipped:      stats.skipped,
+    invalid:      stats.invalid,
     errors:       stats.errors.length ? stats.errors : undefined,
   })
 }

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useAccount }      from "wagmi";
 import { DailyHeroes }        from "@/components/home/DailyHeroes";
+import { DailyStreak }        from "@/components/home/DailyStreak";
 import { CinematicIntro }     from "@/components/home/CinematicIntro";
 
 // Lazy-load leaderboard — below fold, not critical for LCP
@@ -467,7 +468,19 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* ── 3. LIVE / UPCOMING MATCHES ───────────────────────────────────── */}
+        {/* ── 3. DAILY STREAK ──────────────────────────────────────────────── */}
+        <section aria-label="Daily Streak">
+          <SectionHeader title="Daily Streak" />
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.38, ease: "easeOut", delay: 0.15 }}
+          >
+            <DailyStreak isConnected={isConnected} />
+          </motion.div>
+        </section>
+
+        {/* ── 4. LIVE / UPCOMING MATCHES ───────────────────────────────────── */}
         <section aria-label="Live and upcoming matches">
           <SectionHeader title={matchSectionTitle} href="/matches" linkLabel="All matches" />
           <div className="space-y-2">
@@ -492,13 +505,13 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── 4. WORLD CUP TEASER ──────────────────────────────────────────── */}
+        {/* ── 5. WORLD CUP TEASER ──────────────────────────────────────────── */}
         <section aria-label="World Cup 2026">
           <SectionHeader title="World Cup 2026" href="/world-cup" linkLabel="Explore" />
           <WorldCupTeaser />
         </section>
 
-        {/* ── 5. TOP PREDICTORS ────────────────────────────────────────────── */}
+        {/* ── 6. TOP PREDICTORS ────────────────────────────────────────────── */}
         <section aria-label="Top predictors">
           <SectionHeader title="Top Predictors" href="/leaderboard" linkLabel="Full board" />
           <MiniLeaderboard currentUserId={address ?? ""} limit={5} />

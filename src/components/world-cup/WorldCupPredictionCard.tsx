@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Zap, Clock, X, ChevronRight, Lock } from "lucide-react";
-import { useAccount } from "wagmi";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { useAccount, useSignMessage } from "wagmi";
+import { buildPredixiAuthMessage, generateNonce } from "@/lib/auth/wallet-signature";
 import { cn } from "@/lib/utils";
 import {
   saveWCPrediction,
@@ -181,6 +183,7 @@ function derivePredictionType(id: string): string {
 
 export function WorldCupPredictionCard({ prediction, delay = 0, compact = false }: Props) {
   const { address, isConnected } = useAccount();
+  const { signMessageAsync }    = useSignMessage();
 
   const [isOpen,   setIsOpen]   = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -225,20 +228,30 @@ export function WorldCupPredictionCard({ prediction, delay = 0, compact = false 
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    // Always save to localStorage first
+    // 1. Save to localStorage immediately — this is always the source of truth
     saveWCPrediction({ predictionId: prediction.id, selection: selected, savedAt: new Date().toISOString() });
     setSaved(selected);
     setIsOpen(false);
-    // If wallet connected, persist to Supabase (fire-and-forget)
+    // 2. If wallet connected, sign + persist to Supabase (fire-and-forget)
+    //    Sign after modal closes so the wallet popup doesn't block the UI.
     if (isConnected && address) {
-      saveWCPredictionRemote({
-        walletAddress:  address,
-        predictionKey:  prediction.id,
-        predictionType: derivePredictionType(prediction.id),
-        selectedValue:  selected,
-        xpReward:       prediction.xpReward,
-        deadline:       prediction.deadline ?? null,
-      }).catch(() => {/* silent */});
+      const selectionSnapshot = [...selected];
+      const nonce   = generateNonce();
+      const message = buildPredixiAuthMessage(address, 'wc-prediction', nonce);
+      signMessageAsync({ message })
+        .then(signature =>
+          saveWCPredictionRemote({
+            walletAddress:   address,
+            predictionKey:   prediction.id,
+            predictionType:  derivePredictionType(prediction.id),
+            selectedValue:   selectionSnapshot,
+            xpReward:        prediction.xpReward,
+            deadline:        prediction.deadline ?? null,
+            walletMessage:   message,
+            walletSignature: signature,
+          }),
+        )
+        .catch(() => {/* silent — localStorage is the source of truth */});
     }
   };
 
@@ -409,13 +422,16 @@ function PredictionModal({
   onConfirm:  () => void;
   canConfirm: boolean;
 }) {
+  // Lock body scroll while sheet is open — prevents background scroll in Base App webview
+  useBodyScrollLock(isOpen);
+
   const savedOpts    = prediction.pool.filter(o => saved.includes(o.label));
   const selectedOpts = prediction.pool.filter(o => selected.includes(o.label));
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex items-end modal-inset-bottom" onClick={onClose}>
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
@@ -426,6 +442,7 @@ function PredictionModal({
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
             onClick={e => e.stopPropagation()}
             className="relative w-full max-w-lg mx-auto bg-gradient-to-b from-[#0a1428] to-[#07101f] border border-primary/20 border-b-0 rounded-t-2xl flex flex-col max-h-[82vh]"
+            style={{ maxHeight: 'min(82vh, 82dvh)' }}
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
@@ -457,8 +474,8 @@ function PredictionModal({
               </span>
             </div>
 
-            {/* Options */}
-            <div className="flex-1 overflow-y-auto px-4 py-3">
+            {/* Options — touch-action:pan-y + overscroll-contain stop pull-to-refresh */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
               <div className={cn("grid gap-1.5", prediction.pool.length > 8 ? "grid-cols-2" : "grid-cols-1")}>
                 {prediction.pool.map(opt => (
                   <OptionBtn
@@ -471,7 +488,7 @@ function PredictionModal({
               </div>
             </div>
 
-            {/* Confirm footer */}
+            {/* Confirm footer — sheet position (modal-inset-bottom) already clears the BottomNav */}
             <div className="px-4 py-4 flex-shrink-0 border-t border-white/[0.06] space-y-2.5">
               {/* Current saved pick with visuals */}
               {savedOpts.length > 0 && (

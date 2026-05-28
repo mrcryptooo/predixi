@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, RotateCcw, Star, Clock, CheckCircle2 } from "lucide-react";
+import { Lock, RotateCcw, Star, Clock, CheckCircle2, Share2, Copy, Check, Send, Wallet } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { XI_POSITIONS, type DailyXIPlayer } from "@/lib/daily-xi";
+import { shareDailyXI, isShareSupported } from "@/lib/base-app-actions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Staggered pitch positions — [top%, left%]
@@ -146,14 +147,39 @@ function PitchSVG() {
 export function DailyXIPitch({
   slots,
   onReset,
-  earnedXp  = 0,
-  status    = 'pending',
+  earnedXp    = 0,
+  status      = 'pending',
+  onSubmit,
+  submitting  = false,
+  submitted   = false,
+  isConnected = false,
+  submitError,
 }: {
-  slots:      (DailyXIPlayer | null)[];
-  onReset?:   () => void;
-  earnedXp?:  number;
-  status?:    string;
+  slots:        (DailyXIPlayer | null)[];
+  onReset?:     () => void;
+  earnedXp?:    number;
+  status?:      string;
+  onSubmit?:    () => void;
+  submitting?:  boolean;
+  submitted?:   boolean;
+  isConnected?: boolean;
+  submitError?: string | null;
 }) {
+  const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+
+  async function handleShare() {
+    const filledCount = slots.filter(Boolean).length;
+    const result = await shareDailyXI({
+      filledCount,
+      projectedMaxXp: 20,
+      earnedXp: status === 'scored' ? earnedXp : undefined,
+    });
+    if (result === 'copied') {
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 2000);
+    }
+  }
+
   return (
     <div className="space-y-4">
 
@@ -307,21 +333,78 @@ export function DailyXIPitch({
         );
       })()}
 
-      {/* Sub-label + reset row */}
-      <div className="flex items-center justify-between px-1">
-        <p className="text-[10px] text-white/20 font-mono">
-          Base transaction coming soon
-        </p>
-        {onReset && (
+      {/* ── Final Submit CTA ─────────────────────────────────────────────── */}
+      {submitted ? (
+        // Submitted state — green confirmation
+        <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-success/10 border border-success/25">
+          <CheckCircle2 size={13} className="text-success/70 flex-shrink-0" />
+          <span className="text-xs font-bold text-success/75">Final XI submitted</span>
+        </div>
+      ) : !isConnected ? (
+        // Not connected — guidance only, no remote save
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.07]">
+          <Wallet size={13} className="text-white/25 flex-shrink-0" />
+          <span className="text-[11px] text-white/35 font-mono">Connect wallet to submit your Final XI</span>
+        </div>
+      ) : (
+        // Connected + not yet submitted — show submit button
+        <div className="space-y-1.5">
           <button
             type="button"
-            onClick={onReset}
-            className="flex items-center gap-1 text-[10px] font-mono text-white/20 hover:text-danger/60 transition-colors"
+            onClick={onSubmit}
+            disabled={submitting}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black tracking-wide",
+              "transition-all duration-150 active:scale-[0.97]",
+              submitting
+                ? "bg-primary/15 border border-primary/25 text-primary/40 cursor-wait"
+                : "bg-primary text-white shadow-[0_4px_28px_rgba(22,82,240,0.45)] hover:opacity-90",
+            )}
           >
-            <RotateCcw size={9} />
-            Reset XI
+            <Send size={14} className={cn(submitting && "animate-pulse")} />
+            {submitting ? "Submitting…" : "Submit Final XI"}
           </button>
-        )}
+          {submitError && (
+            <p className="text-[10px] font-mono text-danger/60 text-center">{submitError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Share + Reset row */}
+      <div className="flex items-center justify-between px-1">
+        <p className="text-[9px] text-white/15 font-mono">
+          {submitted ? "Synced · On-chain soon" : "Base transaction coming soon"}
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleShare}
+            className={cn(
+              "flex items-center gap-1 text-[10px] font-mono transition-colors",
+              shareState === 'copied'
+                ? "text-success/70"
+                : "text-white/25 hover:text-primary/60"
+            )}
+          >
+            {shareState === 'copied'
+              ? <><Check size={9} />Copied</>
+              : isShareSupported()
+                ? <><Share2 size={9} />Share XI</>
+                : <><Copy  size={9} />Copy link</>
+            }
+          </button>
+
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="flex items-center gap-1 text-[10px] font-mono text-white/20 hover:text-danger/60 transition-colors"
+            >
+              <RotateCcw size={9} />
+              Reset XI
+            </button>
+          )}
+        </div>
       </div>
 
     </div>

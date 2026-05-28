@@ -119,6 +119,9 @@ export async function POST(req: NextRequest) {
     if (!matchId || typeof matchId !== 'string' || matchId.trim() === '') {
       return err('Invalid matchId', 400)
     }
+    if ((matchId as string).trim().length > 200) {
+      return err('matchId must be 200 characters or fewer', 400)
+    }
     if (!isValidOutcome(predictedOutcome)) {
       return err('Invalid predictedOutcome — must be H, D, or A', 400)
     }
@@ -188,7 +191,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = getServerSupabaseClient()
 
-    // ── 1. Upsert profile (create on first connection) ──────────────────────
+    // ── 1. (after lock check) Upsert profile (create on first connection) ───
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .upsert(
@@ -204,15 +207,21 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. Ensure match exists in DB — seed from mock data if needed ────────
+    // Also fetch kickoff + status so we can enforce the kickoff lock below.
     const { data: existingMatch } = await supabase
       .from('matches')
-      .select('id')
+      .select('id, kickoff, status')
       .eq('id', (matchId as string).trim())
       .maybeSingle()
+
+    // Track the authoritative kickoff for the lock check.
+    let matchKickoff: string | null = existingMatch?.kickoff ?? null
 
     if (!existingMatch) {
       const mock = getMatchById((matchId as string).trim())
       if (!mock) return err(`Unknown matchId: ${matchId}`, 404)
+
+      matchKickoff = mock.kickoff   // use mock kickoff for lock check
 
       const { error: matchErr } = await supabase.from('matches').insert({
         id:               mock.id,
@@ -241,15 +250,56 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 3. Upsert prediction (one per profile+match, update on change) ──────
+    // ── 3. Kickoff lock — server time only, no client trust ─────────────────
+    // Predictions are closed as soon as the server clock reaches kickoff.
+    // Covers: live, finished, postponed, and upcoming-but-past-kickoff matches.
+    if (!matchKickoff) {
+      return NextResponse.json(
+        { success: false, error: 'Match has no kickoff time — cannot accept predictions', locked: true },
+        { status: 400 },
+      )
+    }
+    const kickoffMs = new Date(matchKickoff).getTime()
+    if (isNaN(kickoffMs)) {
+      return NextResponse.json(
+        { success: false, error: 'Match has an invalid kickoff time', locked: true },
+        { status: 400 },
+      )
+    }
+    if (Date.now() >= kickoffMs) {
+      return NextResponse.json(
+        {
+          success:     false,
+          error:       'Predictions are locked after kickoff',
+          locked:      true,
+          kickoffTime: matchKickoff,
+        },
+        { status: 403 },
+      )
+    }
+
+    // ── 4. Lock-in placedAt — shared between the upsert row and the hash ──────
+    const placedAt = new Date().toISOString()
+
+    // ── 5. Upsert prediction — without commitment_hash (added in step 6) ─────
+    //
+    // We upsert first to obtain the stable DB row UUID (prediction.id).
+    // The UUID is included in the commitment hash so each hash is provably
+    // unique per row, independently of timestamp precision or retry timing.
+    //
+    // On conflict (profile_id, match_id): updates outcome + placed_at only.
+    // The existing commitment_hash is left untouched by the upsert and will
+    // be overwritten by the explicit UPDATE in step 6.
+    //
+    // commitment_hash is nullable in the schema, so omitting it here is safe.
     const { data: prediction, error: predErr } = await supabase
       .from('predictions')
       .upsert(
         {
-          profile_id:    profile.id,
-          match_id:      (matchId as string).trim(),
-          outcome:       predictedOutcome as DbOutcome,
-          placed_at:     new Date().toISOString(),
+          profile_id: profile.id,
+          match_id:   (matchId as string).trim(),
+          outcome:    predictedOutcome as DbOutcome,
+          placed_at:  placedAt,
         },
         { onConflict: 'profile_id,match_id' },
       )
@@ -261,15 +311,30 @@ export async function POST(req: NextRequest) {
       return err('Failed to save prediction', 500)
     }
 
-    // ── 4. Return safe response (no secrets, no signature echoed back) ───────
-    // Commitment hash — deterministic keccak256 of the canonical prediction payload.
-    // Phase 2: save to predictions.commitment_hash after add-onchain-metadata.sql is applied.
+    // ── 6. Compute commitment hash — includes DB row UUID for uniqueness ──────
+    //
+    // Now that prediction.id is known, include it in the hash payload.
+    // This guarantees: same wallet + same match + same outcome + same UUID
+    // always produces the same hash (deterministic), and no two different
+    // prediction rows can ever share a hash (unique).
     const { commitmentHash } = createPredictionCommitment({
       walletAddress: normalizedAddress,
       matchId:       (matchId as string).trim(),
       outcome:       predictedOutcome as string,
-      placedAt:      prediction.placed_at,
+      placedAt,
+      predictionId:  prediction.id as string,
     })
+
+    // ── 7. Stamp commitment_hash onto the row ─────────────────────────────────
+    const { error: hashErr } = await supabase
+      .from('predictions')
+      .update({ commitment_hash: commitmentHash })
+      .eq('id', prediction.id)
+
+    if (hashErr) {
+      console.error('[POST /api/predictions] commitment_hash update:', hashErr)
+      return err('Failed to record commitment hash', 500)
+    }
 
     // walletAuth: mandatory verification already passed above (Phase 4D)
     return NextResponse.json({
@@ -332,7 +397,7 @@ export async function GET(req: NextRequest) {
     // Fetch predictions newest-first
     const { data: predictions, error: predErr } = await supabase
       .from('predictions')
-      .select('id, match_id, outcome, placed_at, points_awarded, is_correct')
+      .select('id, match_id, outcome, placed_at, points_awarded, is_correct, commitment_hash, submitted_onchain, tx_hash')
       .eq('profile_id', profile.id)
       .order('placed_at', { ascending: false })
 
@@ -344,12 +409,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       predictions: (predictions ?? []).map((p) => ({
-        id:            p.id,
-        matchId:       p.match_id,
-        outcome:       p.outcome,
-        placedAt:      p.placed_at,
-        pointsAwarded: p.points_awarded,
-        isCorrect:     p.is_correct,
+        id:               p.id,
+        matchId:          p.match_id,
+        outcome:          p.outcome,
+        placedAt:         p.placed_at,
+        pointsAwarded:    p.points_awarded,
+        isCorrect:        p.is_correct,
+        commitmentHash:   p.commitment_hash   ?? null,
+        submittedOnchain: p.submitted_onchain ?? false,
+        txHash:           p.tx_hash           ?? null,
       })),
     })
   } catch (error) {

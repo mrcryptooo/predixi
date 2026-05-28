@@ -14,14 +14,30 @@
  *
  * ── Commitment types ─────────────────────────────────────────────────────────
  *
- *   prediction   — match prediction (wallet + matchId + outcome + placedAt)
- *   daily-xi     — Daily XI pick (wallet + date + playerIds + projectedMaxXp)
+ *   prediction    — match prediction (wallet + matchId + outcome + placedAt + predictionId)
+ *   daily-xi      — Daily XI pick (wallet + date + playerIds + projectedMaxXp)
  *   wc-prediction — World Cup pick (wallet + predictionKey + selectedValue + xpReward)
+ *
+ * ── Hash uniqueness model ─────────────────────────────────────────────────────
+ *
+ *   All types:     walletAddress is included → cross-user collisions are
+ *                  cryptographically impossible.
+ *
+ *   prediction:    predictionId (Supabase UUID, stable per profile+match row)
+ *                  is included since Phase 3 / Base Mainnet readiness.
+ *                  This guarantees each hash is provably unique per DB row,
+ *                  independent of timestamp precision or retry timing.
+ *
+ *   daily-xi:      walletAddress + entryDate uniquely identifies each entry
+ *                  (enforced by UNIQUE constraint). No UUID needed.
+ *
+ *   wc-prediction: walletAddress + predictionKey uniquely identifies each entry
+ *                  (enforced by UNIQUE constraint). No UUID needed.
  *
  * ── Future phases ────────────────────────────────────────────────────────────
  *
  *   Phase 2: write commitmentHash to DB (after add-onchain-metadata.sql applied)
- *   Phase 3: call submitCommitmentToBase() from client.ts to anchor on-chain
+ *   Phase 3: call submitCommitmentToBase() from client.ts to anchor on Base Mainnet
  */
 
 import { keccak256, toBytes } from 'viem'
@@ -59,20 +75,43 @@ export type CommitmentResult = {
 
 // ── Per-type commitment builders ──────────────────────────────────────────────
 
-/** Match prediction commitment */
+/**
+ * Match prediction commitment.
+ *
+ * @param input.predictionId  The Supabase-generated UUID for the predictions row.
+ *                            Include this whenever the row ID is known (i.e. after
+ *                            the DB upsert returns). Including the UUID guarantees
+ *                            hash uniqueness per DB row, independently of the
+ *                            millisecond timestamp.
+ *
+ *                            Backward compatibility: the field is optional.
+ *                            Hashes generated without predictionId (e.g. legacy
+ *                            rows created before Base Mainnet readiness) remain
+ *                            valid and are stored in the DB as-is.
+ */
 export function createPredictionCommitment(input: {
   walletAddress: string
   matchId:       string
   outcome:       string
   placedAt:      string
+  predictionId?: string   // Supabase UUID — include after DB upsert to guarantee uniqueness
 }): CommitmentResult {
-  const payload = {
+  const payload: Record<string, unknown> = {
     type:          'prediction',
     walletAddress: input.walletAddress.toLowerCase(),
     matchId:       input.matchId,
     outcome:       input.outcome,
     placedAt:      input.placedAt,
   }
+
+  // Include the DB row UUID when provided.
+  // This makes each hash provably unique per prediction row.
+  // deterministicStringify sorts keys alphabetically, so 'predictionId'
+  // always lands between 'placedAt' and 'type' in the canonical JSON.
+  if (input.predictionId) {
+    payload.predictionId = input.predictionId
+  }
+
   return { payload, commitmentHash: hashCommitment(payload) }
 }
 

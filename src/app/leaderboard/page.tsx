@@ -4,9 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Trophy, Zap, Flame, Target } from "lucide-react";
 import { useAccount } from "wagmi";
-import { PodiumCard }        from "@/components/leaderboard/PodiumCard";
-import { LeaderboardTable }  from "@/components/leaderboard/LeaderboardTable";
-import { RankBadge }         from "@/components/ui/Badge";
+import { PodiumCard }           from "@/components/leaderboard/PodiumCard";
+import { LeaderboardTable }    from "@/components/leaderboard/LeaderboardTable";
+import { RankBadge }           from "@/components/ui/Badge";
+import { LeaderboardRowSkeleton } from "@/components/ui/Skeleton";
 import { cn }                from "@/lib/utils";
 import type { LeaderboardEntry } from "@/types";
 
@@ -32,8 +33,9 @@ export default function LeaderboardPage() {
   const [period,  setPeriod]    = useState<Period>("global");
 
   useEffect(() => {
+    // Set loading but keep stale entries visible — avoids a blank flash
+    // while the new period's data loads.
     setLoading(true);
-    setEntries([]);
     const apiPeriod = period === "global" ? "all_time" : "weekly";
     fetch(`/api/leaderboard?period=${apiPeriod}`)
       .then(r => r.json())
@@ -130,10 +132,12 @@ export default function LeaderboardPage() {
           })}
         </motion.div>
 
-        {/* ── Loading ───────────────────────────────────────────────────── */}
-        {loading && (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-white/30 font-mono animate-pulse">Loading rankings…</p>
+        {/* ── Loading skeleton ──────────────────────────────────────────── */}
+        {loading && entries.length === 0 && (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <LeaderboardRowSkeleton key={i} />
+            ))}
           </div>
         )}
 

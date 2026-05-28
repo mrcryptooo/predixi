@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
 import { MobileHeader } from "./MobileHeader";
+import { AppFooter } from "./AppFooter";
 
 interface PageWrapperProps {
   children: ReactNode;
@@ -25,9 +26,13 @@ export function PageWrapper({ children }: PageWrapperProps) {
       {/* Mobile bottom nav */}
       <BottomNav />
 
-      {/* Scrollable content area */}
-      <div className="md:pl-[220px] min-h-screen pt-14 md:pt-0 pb-[60px] md:pb-0">
-        {children}
+      {/* Scrollable content area.
+           Mobile: top offset = MobileHeader (56px) + safe-area-top (via pt-safe-header)
+                   bottom offset = BottomNav (60px) + safe-area-bottom (via pb-safe-nav)
+           Desktop: sidebar handles layout — no top/bottom offset needed. */}
+      <div className="md:pl-[220px] min-h-screen pt-safe-header md:pt-0 pb-safe-nav md:pb-0 flex flex-col">
+        <div className="flex-1">{children}</div>
+        <AppFooter />
       </div>
     </>
   );

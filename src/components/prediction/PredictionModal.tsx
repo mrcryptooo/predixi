@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Lock, CheckCircle2, Clock, MapPin, Zap, CloudOff, PenLine } from "lucide-react";
+import { X, Lock, CheckCircle2, Clock, MapPin, Zap, CloudOff, PenLine, Share2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePredictionStore } from "@/store/usePredictionStore";
 import { useAccount, useSignMessage } from "wagmi";
@@ -11,6 +11,8 @@ import { PointsPreview } from "./PointsPreview";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { leagueMap } from "@/data/leagues";
 import { buildPredictionMessage } from "@/lib/prediction-message";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { sharePrediction, isShareSupported } from "@/lib/base-app-actions";
 import type { Match, MatchOutcome } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,11 +71,15 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
   const existingPick  = getPrediction(match.id)?.outcome ?? null;
   const alreadyLocked = hasPredicted(match.id);
 
-  const [selected,  setSelected]  = useState<MatchOutcome | null>(existingPick);
-  const [confirmed, setConfirmed] = useState<boolean>(alreadyLocked);
-  const [shaking,   setShaking]   = useState<boolean>(false);
-  const [syncing,   setSyncing]   = useState<boolean>(false);
-  const [signing,   setSigning]   = useState<boolean>(false);
+  const [selected,   setSelected]  = useState<MatchOutcome | null>(existingPick);
+  const [confirmed,  setConfirmed] = useState<boolean>(alreadyLocked);
+  const [shaking,    setShaking]   = useState<boolean>(false);
+  const [syncing,    setSyncing]   = useState<boolean>(false);
+  const [signing,    setSigning]   = useState<boolean>(false);
+  const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+
+  // Lock body scroll while modal is open — prevents background scroll in Base App webview
+  useBodyScrollLock(true);
 
   const league = leagueMap[match.leagueId];
 
@@ -100,6 +106,13 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
     if (!selected) {
       setShaking(true);
       setTimeout(() => setShaking(false), 500);
+      return;
+    }
+
+    // Client-side kickoff guard — prevents local save for locked matches.
+    // Backend is the authoritative enforcer; this is a UX safeguard only.
+    if (isLocked) {
+      setPersistError("Predictions are locked after kickoff.");
       return;
     }
 
@@ -174,7 +187,11 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
     setSelected(outcome);
   }
 
-  const isFinished = match.status === "finished";
+  const isFinished      = match.status === "finished";
+  const isLive          = match.status === "live";
+  const isPastKickoff   = Date.now() >= new Date(match.kickoff).getTime();
+  // isLocked: mirrors backend rule — predictions closed once kickoff is reached
+  const isLocked        = isFinished || isLive || isPastKickoff;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -202,12 +219,12 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
           className={cn(
             "relative z-10 w-full sm:max-w-lg bg-surface border border-border",
             "rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden",
-            "max-h-[92dvh] overflow-y-auto"
+            "max-h-[92dvh] overflow-y-auto overscroll-contain"
           )}
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 60 }}
-          transition={{ type: "spring", stiffness: 320, damping: 32 }}
+          transition={{ type: "spring", stiffness: 280, damping: 30 }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Live stripe */}
@@ -248,13 +265,16 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
               </div>
             </div>
 
+            {/* Hit area is 44×44px (iOS minimum) — visual size stays compact */}
             <button
               type="button"
               onClick={onClose}
-              className="flex-shrink-0 w-8 h-8 rounded-xl bg-elevated border border-border flex items-center justify-center text-text-muted hover:text-text-primary hover:border-primary/30 transition-colors ml-3"
+              className="flex-shrink-0 -m-1 p-1 ml-2 rounded-xl text-text-muted hover:text-text-primary transition-colors"
               aria-label="Close modal"
             >
-              <X size={14} />
+              <span className="flex w-8 h-8 rounded-xl bg-elevated border border-border items-center justify-center hover:border-primary/30 transition-colors">
+                <X size={14} />
+              </span>
             </button>
           </div>
 
@@ -351,6 +371,37 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                 </div>
               )}
 
+              {/* Share prediction */}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selected) return;
+                  const result = await sharePrediction({
+                    homeTeam:    match.homeTeam.shortName,
+                    awayTeam:    match.awayTeam.shortName,
+                    pick:        outcomeLabels[selected],
+                    leagueName:  league?.shortName,
+                  });
+                  if (result === 'copied') {
+                    setShareState('copied');
+                    setTimeout(() => setShareState('idle'), 2000);
+                  }
+                }}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-xs font-semibold transition-all duration-150",
+                  shareState === 'copied'
+                    ? "bg-success/10 border-success/30 text-success"
+                    : "bg-white/[0.04] border-white/[0.08] text-text-muted hover:text-text-secondary hover:border-primary/25"
+                )}
+              >
+                {shareState === 'copied'
+                  ? <><Check size={12} />Link copied</>
+                  : isShareSupported()
+                    ? <><Share2 size={12} />Share prediction</>
+                    : <><Copy  size={12} />Copy link</>
+                }
+              </button>
+
               <button
                 type="button"
                 onClick={onClose}
@@ -364,18 +415,22 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
             /* ── Prediction flow ──────────────────────────────────────── */
             <div className="p-5 space-y-4">
 
-              {/* Finished / no prediction allowed notice */}
-              {isFinished && (
+              {/* Locked notice — finished, live, or past kickoff */}
+              {isLocked && (
                 <div className="flex items-center gap-2 rounded-xl bg-elevated border border-border px-4 py-3">
                   <Lock size={13} className="text-text-muted flex-shrink-0" />
                   <p className="text-xs text-text-muted font-mono">
-                    This match has finished. Predictions are closed.
+                    {isFinished
+                      ? "This match has finished. Predictions are closed."
+                      : isLive
+                      ? "This match is live. Predictions are locked."
+                      : "Kickoff has passed. Predictions are locked."}
                   </p>
                 </div>
               )}
 
               {/* Signature hint / retry error — wallet connected */}
-              {!isFinished && isConnected && (
+              {!isLocked && isConnected && (
                 persistError ? (
                   <p className="text-[10px] text-warning/80 font-mono text-center">
                     {persistError}
@@ -388,7 +443,7 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
               )}
 
               {/* Local-only hint when no wallet */}
-              {!isFinished && !isConnected && (
+              {!isLocked && !isConnected && (
                 <p className="text-[10px] text-text-muted font-mono text-center">
                   Connect your wallet to save predictions to your profile.
                 </p>
@@ -415,19 +470,19 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                       match.community.draw
                     }
                     selected={selected === outcome}
-                    disabled={isFinished}
+                    disabled={isLocked}
                     onClick={() => handleSelect(outcome)}
                   />
                 ))}
               </motion.div>
 
-              {/* Points preview */}
-              {!isFinished && (
+              {/* Points preview — only when open */}
+              {!isLocked && (
                 <PointsPreview status={match.status} leagueId={match.leagueId} />
               )}
 
               {/* Confirm / action button */}
-              {!isFinished ? (
+              {!isLocked ? (
                 <button
                   type="button"
                   onClick={handleConfirm}

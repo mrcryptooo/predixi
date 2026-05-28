@@ -174,13 +174,16 @@ export async function fetchDailyXIRemote(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DailyXIEntryMeta = {
-  status:         string;
-  earnedXp:       number;
-  projectedMaxXp: number;
+  status:           string;
+  earnedXp:         number;
+  projectedMaxXp:   number;
+  commitmentHash?:  string | null;
+  submittedOnchain?: boolean;
+  txHash?:          string | null;
 };
 
 /**
- * Fetch entry metadata (status, earnedXp, projectedMaxXp) for a wallet/date.
+ * Fetch entry metadata (status, earnedXp, projectedMaxXp, proof fields) for a wallet/date.
  * Returns null on any error or missing entry. Does not return player slots.
  */
 export async function fetchDailyXIEntryMeta(
@@ -195,16 +198,22 @@ export async function fetchDailyXIEntryMeta(
     const data = await res.json() as {
       success: boolean;
       entry?: {
-        status:         string;
-        earnedXp:       number;
-        projectedMaxXp: number;
+        status:           string;
+        earnedXp:         number;
+        projectedMaxXp:   number;
+        commitmentHash?:  string | null;
+        submittedOnchain?: boolean;
+        txHash?:          string | null;
       } | null;
     };
     if (!data.success || !data.entry) return null;
     return {
-      status:         data.entry.status,
-      earnedXp:       data.entry.earnedXp       ?? 0,
-      projectedMaxXp: data.entry.projectedMaxXp  ?? 20,
+      status:           data.entry.status,
+      earnedXp:         data.entry.earnedXp        ?? 0,
+      projectedMaxXp:   data.entry.projectedMaxXp   ?? 20,
+      commitmentHash:   data.entry.commitmentHash   ?? null,
+      submittedOnchain: data.entry.submittedOnchain ?? false,
+      txHash:           data.entry.txHash           ?? null,
     };
   } catch {
     return null;
@@ -214,16 +223,34 @@ export async function fetchDailyXIEntryMeta(
 /**
  * Persist the current Daily XI slots to Supabase.
  * Fire-and-forget — never throws. localStorage must be saved before calling.
+ *
+ * auth.message + auth.signature are required by the backend (Phase 2).
+ * Pass the EIP-191 signed message and its hex signature from the wallet.
+ */
+/**
+ * Persist the Daily XI slots to Supabase.
+ * Throws on network failure or non-ok HTTP response, with the server's error
+ * message so callers can surface the exact reason to the user.
+ * localStorage must already be saved before calling this.
  */
 export async function saveDailyXIRemote(
   walletAddress: string,
   players: (DailyXIPlayer | null)[],
   date?: string,
+  auth?: { message: string; signature: string },
 ): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // HTTP header values cannot contain newlines (RFC 7230) — the auth message is
+  // a multiline string joined with \n.  encodeURIComponent makes it header-safe.
+  // The server decodes with decodeURIComponent before signature verification.
+  if (auth?.message)   headers["x-wallet-message"]   = encodeURIComponent(auth.message);
+  if (auth?.signature) headers["x-wallet-signature"] = auth.signature;
+
+  let res: Response;
   try {
-    await fetch("/api/daily-xi", {
+    res = await fetch("/api/daily-xi", {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body:    JSON.stringify({
         walletAddress,
         players,
@@ -231,7 +258,21 @@ export async function saveDailyXIRemote(
         projectedMaxXp: 20,
       }),
     });
-  } catch (e) {
-    console.warn("[DailyXI] remote save failed:", e);
+  } catch (fetchErr) {
+    // Network-level failure (offline, fetch aborted, invalid header value, DNS error)
+    const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+    console.warn("[DailyXI] fetch threw:", detail);
+    throw new Error(`Network error — ${detail}`);
+  }
+
+  if (!res.ok) {
+    // Surface the server's own error message so the user sees the real reason
+    let serverMsg = `Server error ${res.status}`;
+    try {
+      const body = await res.json() as { error?: string };
+      if (body.error) serverMsg = body.error;
+    } catch { /* ignore JSON parse failure */ }
+    console.warn("[DailyXI] remote save rejected:", res.status, serverMsg);
+    throw new Error(serverMsg);
   }
 }

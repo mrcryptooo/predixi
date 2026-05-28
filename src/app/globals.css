@@ -5,6 +5,17 @@
 :root {
   --font-inter: "Inter", system-ui, sans-serif;
   --font-jetbrains-mono: "JetBrains Mono", monospace;
+
+  /* Safe-area insets — populated by the browser when viewportFit=cover.
+     Fall back to 0px on non-notched devices and desktop. */
+  --safe-top:    env(safe-area-inset-top,    0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
+
+  /* Fixed layout heights — used by safe-area utility classes below */
+  --mobile-nav-height:    60px;
+  --mobile-header-height: 56px;
 }
 
 @layer base {
@@ -12,6 +23,8 @@
   *::before,
   *::after {
     box-sizing: border-box;
+    /* Eliminate the blue/gray tap flash in mobile browsers and Base App webview */
+    -webkit-tap-highlight-color: transparent;
   }
 
   html {
@@ -24,6 +37,33 @@
     font-family: var(--font-inter), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Prevent rubber-band scroll from propagating to the window behind modals */
+    overscroll-behavior-y: contain;
+  }
+
+  /* Remove the 300 ms tap delay on touch devices for all interactive elements.
+     touch-action: manipulation opts out of double-tap-to-zoom, which is the
+     source of that delay on iOS Safari and Android WebView. */
+  a,
+  button,
+  [role="button"],
+  label[for],
+  summary {
+    touch-action: manipulation;
+  }
+
+  /* Respect the OS "reduce motion" preference.
+     Frames Motion JS animations are handled via <MotionConfig reducedMotion="user">
+     in providers.tsx. This block covers CSS-driven animations (shimmer, pulse, spin). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   ::selection {
@@ -48,6 +88,29 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #4A4D65;
   }
+}
+
+/* ── ArcMenta: page-level layout escape ───────────────────────────────────
+   Negates the PageWrapper pt-safe-header so the cinema overlay starts
+   flush with the real viewport top on mobile. Desktop has no header offset. */
+.arc-page-root {
+  margin-top: calc(-56px - env(safe-area-inset-top, 0px));
+}
+@media (min-width: 768px) {
+  .arc-page-root { margin-top: 0; }
+}
+
+/* ── ArcMenta animation keyframes ─────────────────────────────────────────── */
+@keyframes arc-ring-pulse {
+  0%, 100% { transform: scale(1);     opacity: 0.18; }
+  50%       { transform: scale(1.12); opacity: 0.07; }
+}
+
+@keyframes arc-prob-float {
+  0%   { transform: translateY(0px);   opacity: 0;    }
+  12%  {                               opacity: 0.45; }
+  80%  {                               opacity: 0.25; }
+  100% { transform: translateY(-52px); opacity: 0;    }
 }
 
 @layer utilities {
@@ -128,6 +191,68 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+
+  /* ── Safe-area utilities ─────────────────────────────────────────────── */
+
+  /* Spacer that fills the iOS/Android status-bar safe area at the top.
+     Used inside MobileHeader so content clears the notch in Base App webview. */
+  .h-safe-top {
+    height: env(safe-area-inset-top, 0px);
+  }
+
+  /* Spacer that fills exactly the iOS/Android bottom safe area (home indicator).
+     Used at the bottom of BottomNav so content is never hidden behind it. */
+  .h-safe-bottom {
+    height: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Content area padding that accounts for fixed BottomNav (60px) + safe area.
+     Applied on mobile only — desktop uses sidebar, no bottom nav. */
+  .pb-safe-nav {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Sticky action footer padding — 1rem base + iOS home indicator clearance.
+     Use on modal/sheet footers so the CTA is never hidden behind the home bar. */
+  .pb-safe-action {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Modal/sheet action footer — clears full mobile nav (60px) + safe area.
+     Use on WC/prediction modal footers that slide up from bottom: the confirm
+     button sits above the BottomNav chrome regardless of z-index stacking. */
+  .pb-mobile-action {
+    padding-bottom: calc(1rem + var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Bottom inset for modal/sheet containers — pushes the sheet's bottom edge above
+     the BottomNav on mobile. Applied to the outer flex container so the sheet itself
+     lands above the nav without needing to touch the footer padding calculation.
+     Resets to 0 on md+ where there is no BottomNav. */
+  .modal-inset-bottom {
+    padding-bottom: calc(var(--mobile-nav-height, 60px) + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .modal-inset-bottom { padding-bottom: 0; }
+  }
+
+  /* First-screen hero min-height that subtracts both fixed bars + safe areas.
+     Ensures hero content never overflows below the mobile BottomNav on any device. */
+  .min-h-mobile-screen-safe {
+    min-height: calc(
+      100vh
+      - var(--mobile-header-height)
+      - var(--mobile-nav-height)
+      - env(safe-area-inset-top, 0px)
+      - env(safe-area-inset-bottom, 0px)
+    );
+  }
+
+  /* Content area top padding that accounts for fixed MobileHeader (56px) + safe area.
+     In Base App webview on notched iPhones the status bar sits inside the viewport. */
+  .pt-safe-header {
+    padding-top: calc(56px + env(safe-area-inset-top, 0px));
   }
 
   /* gradient-brand — PrediXI brand: blue → white (no purple) */

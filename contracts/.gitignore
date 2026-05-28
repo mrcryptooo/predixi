@@ -1,0 +1,7 @@
+# Foundry build output
+out/
+cache/
+
+# Foundry dependencies (installed via forge install — not committed)
+# Uncomment the line below if you prefer not to commit forge-std
+# lib/

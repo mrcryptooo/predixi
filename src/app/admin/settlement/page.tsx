@@ -32,8 +32,10 @@ import {
   Wand2,
   ListChecks,
   Globe,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HealthStatusCard } from "@/components/admin/HealthStatusCard";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -1378,6 +1380,257 @@ function DailyXIScoringForm({ adminKey }: { adminKey: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cron Monitor — read-only view of cron_runs table
+// ─────────────────────────────────────────────────────────────────────────────
+
+type CronRun = {
+  id:      string;
+  route:   string;
+  status:  string;
+  summary: Record<string, unknown> | null;
+  error:   string | null;
+  ranAt:   string;
+};
+
+type CronRunsResponse = {
+  success:   boolean;
+  count?:    number;
+  route?:    string;
+  cronRuns?: CronRun[];
+  error?:    string;
+};
+
+const CRON_ROUTES = [
+  { value: "all",                          label: "All routes"           },
+  { value: "/api/cron/sync-fixtures",      label: "sync-fixtures"        },
+  { value: "/api/cron/sync-results",       label: "sync-results"         },
+  { value: "/api/cron/score-daily-xi",     label: "score-daily-xi"       },
+  { value: "/api/cron/auto-settle",        label: "auto-settle"          },
+] as const;
+
+type CronRouteFilter = typeof CRON_ROUTES[number]["value"];
+
+/** Pill badge for a cron run status. */
+function StatusPill({ status }: { status: string }) {
+  const isOk  = status === "success";
+  const isErr = status === "error";
+  return (
+    <span className={cn(
+      "inline-flex items-center px-1.5 py-0.5 rounded-md text-[8px] font-mono font-bold uppercase tracking-wider",
+      isOk  && "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
+      isErr && "bg-red-500/12 text-red-400 border border-red-500/20",
+      !isOk && !isErr && "bg-amber-400/12 text-amber-400 border border-amber-400/20",
+    )}>
+      {status}
+    </span>
+  );
+}
+
+/** Extract key numeric fields from a cron run summary blob. */
+function SummaryChips({ summary }: { summary: Record<string, unknown> | null }) {
+  if (!summary) return null;
+
+  const FIELDS: { key: string; label: string; color: string }[] = [
+    { key: "inserted",      label: "ins",       color: "text-sky-400/70"     },
+    { key: "updated",       label: "upd",       color: "text-primary/70"     },
+    { key: "scoredEntries", label: "scored",    color: "text-emerald-400/70" },
+    { key: "settledMatches",label: "settled",   color: "text-emerald-400/70" },
+    { key: "totalXPAwarded",label: "xp",        color: "text-primary/70"     },
+    { key: "scanned",       label: "scanned",   color: "text-white/35"       },
+    { key: "skipped",       label: "skipped",   color: "text-white/25"       },
+  ];
+
+  const chips = FIELDS
+    .filter(f => summary[f.key] !== undefined && summary[f.key] !== null)
+    .map(f => ({ ...f, value: summary[f.key] }));
+
+  // Error count from nested errors array
+  const errArr = summary["errors"];
+  const errCount = Array.isArray(errArr) ? errArr.length : null;
+
+  if (chips.length === 0 && errCount === null) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1">
+      {chips.map(c => (
+        <span key={c.key} className={cn("text-[8px] font-mono", c.color)}>
+          {c.label}: <span className="font-bold">{String(c.value)}</span>
+        </span>
+      ))}
+      {errCount !== null && errCount > 0 && (
+        <span className="text-[8px] font-mono text-red-400/70">
+          errors: <span className="font-bold">{errCount}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Collapsible row for a single cron run. */
+function CronRunRow({ run }: { run: CronRun }) {
+  const [open, setOpen] = useState(false);
+
+  const routeShort = run.route.replace("/api/cron/", "");
+  const ranAt = new Date(run.ranAt).toLocaleString("en-GB", {
+    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+
+  return (
+    <div className={cn(
+      "rounded-xl border transition-colors",
+      run.status === "success" ? "border-white/[0.07] bg-white/[0.02]" : "border-red-500/15 bg-red-500/[0.03]",
+    )}>
+      {/* Main row — always visible */}
+      <button
+        type="button"
+        onClick={() => setOpen(p => !p)}
+        className="w-full flex items-start gap-3 px-3 py-2.5 text-left"
+      >
+        <StatusPill status={run.status} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] font-mono text-white/60 font-semibold truncate">{routeShort}</span>
+            <span className="text-[9px] font-mono text-white/25 flex-shrink-0">{ranAt}</span>
+          </div>
+          <SummaryChips summary={run.summary} />
+          {run.error && (
+            <p className="text-[9px] font-mono text-red-400/70 mt-1 break-all line-clamp-2">{run.error}</p>
+          )}
+        </div>
+        <span className="text-white/20 flex-shrink-0 mt-0.5">
+          {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+        </span>
+      </button>
+
+      {/* Expanded raw JSON */}
+      {open && (
+        <div className="px-3 pb-3">
+          <pre className="text-[9px] font-mono text-white/25 bg-black/25 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
+            {JSON.stringify(run, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Main Cron Monitor card — read-only, no mutation. */
+function CronMonitorCard({ adminKey }: { adminKey: string }) {
+  const [runs,        setRuns]        = useState<CronRun[]>([]);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [fetched,     setFetched]     = useState(false);
+  const [routeFilter, setRouteFilter] = useState<CronRouteFilter>("all");
+
+  async function fetchRuns(filter: CronRouteFilter = routeFilter) {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (filter !== "all") params.set("route", filter);
+      const res  = await fetch(`/api/admin/cron-runs?${params.toString()}`, {
+        headers: { "x-admin-key": adminKey },
+      });
+      const data = await res.json() as CronRunsResponse;
+      if (!data.success) {
+        setError(data.error ?? "Failed to load cron runs.");
+        setRuns([]);
+      } else {
+        setRuns(data.cronRuns ?? []);
+      }
+    } catch {
+      setError("Network error — could not reach server.");
+    } finally {
+      setLoading(false);
+      setFetched(true);
+    }
+  }
+
+  function handleFilterChange(value: CronRouteFilter) {
+    setRouteFilter(value);
+    if (fetched) fetchRuns(value);
+  }
+
+  return (
+    <Card>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 text-[11px] font-mono font-semibold text-white/50 uppercase tracking-wider">
+          <Clock size={11} /> Cron Monitor
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Route filter */}
+          <select
+            value={routeFilter}
+            onChange={e => handleFilterChange(e.target.value as CronRouteFilter)}
+            className={cn(
+              "h-7 px-2 rounded-lg border text-[10px] font-mono text-white/60",
+              "bg-white/[0.04] border-white/[0.10]",
+              "focus:outline-none focus:border-primary/40",
+            )}
+          >
+            {CRON_ROUTES.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          {/* Refresh */}
+          <button
+            type="button"
+            onClick={() => fetchRuns()}
+            disabled={loading}
+            className={cn(
+              "h-7 px-2.5 rounded-lg border text-[10px] font-mono font-semibold flex items-center gap-1.5",
+              "bg-white/[0.04] border-white/[0.10] text-white/45",
+              "hover:border-primary/30 hover:text-white/70 transition-colors",
+              "disabled:opacity-40",
+            )}
+          >
+            <RefreshCw size={9} className={loading ? "animate-spin" : undefined} />
+            {loading ? "Loading…" : fetched ? "Refresh" : "Load"}
+          </button>
+        </div>
+      </div>
+
+      {/* Read-only notice */}
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.05]">
+        <Shield size={9} className="text-primary/40 flex-shrink-0" />
+        <p className="text-[9px] font-mono text-white/25">Read-only — no cron jobs are triggered here.</p>
+      </div>
+
+      {/* Body */}
+      {!fetched ? (
+        <div className="py-6 flex flex-col items-center gap-2 text-center">
+          <Clock size={18} className="text-white/15" />
+          <p className="text-[10px] font-mono text-white/25">
+            Press <span className="text-primary/50 font-bold">Load</span> to fetch recent cron runs.
+          </p>
+        </div>
+      ) : error ? (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/8 border border-red-500/20">
+          <AlertTriangle size={11} className="text-red-400/70 flex-shrink-0 mt-0.5" />
+          <p className="text-[10px] font-mono text-red-400/70">{error}</p>
+        </div>
+      ) : runs.length === 0 ? (
+        <div className="py-6 flex flex-col items-center gap-2 text-center">
+          <Clock size={18} className="text-white/15" />
+          <p className="text-[10px] font-mono text-white/25">No cron runs logged yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-mono text-white/20">
+            Showing {runs.length} most recent run{runs.length !== 1 ? "s" : ""}
+            {routeFilter !== "all" ? ` · filtered: ${routeFilter.replace("/api/cron/", "")}` : ""}
+          </p>
+          {runs.map(run => (
+            <CronRunRow key={run.id} run={run} />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Gate — shown until key is verified
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1598,6 +1851,12 @@ function SettlementForm({
       {/* World Cup Settlement */}
       <WCSettlementForm adminKey={adminKey} />
 
+      {/* Cron Monitor */}
+      <CronMonitorCard adminKey={adminKey} />
+
+      {/* Pipeline Health */}
+      <HealthStatusCard adminKey={adminKey} />
+
       {/* Safety notes */}
       <Card>
         <div className="flex items-center gap-2 text-[11px] font-mono font-semibold text-white/50 uppercase tracking-wider">
@@ -1616,6 +1875,8 @@ function SettlementForm({
           <li>· Daily XI Batch: manually triggers the nightly cron — scores all pending entries.</li>
           <li>· World Cup Settlement: settles all pending wc_predictions for a key, awards XP to winners.</li>
           <li>· Admin key lives in memory only — cleared on lock or page reload.</li>
+          <li>· Cron Monitor: read-only view of cron_runs table — no jobs are triggered.</li>
+          <li>· Pipeline Health: checks DB, fixtures, cron freshness, XP/proof pipelines, env vars — read-only.</li>
         </ul>
       </Card>
     </>

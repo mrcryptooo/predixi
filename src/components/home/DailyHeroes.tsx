@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shuffle, Wallet, ChevronRight, RotateCcw, HelpCircle, X,
 } from "lucide-react";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage } from "wagmi";
+import { buildPredixiAuthMessage, generateNonce } from "@/lib/auth/wallet-signature";
 import { cn } from "@/lib/utils";
 import {
   XI_POSITIONS,
@@ -247,7 +248,8 @@ function SlotStrip({ slots, nextIdx }: { slots: (DailyXIPlayer | null)[]; nextId
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
-  const { address } = useAccount();
+  const { address }          = useAccount();
+  const { signMessageAsync } = useSignMessage();
 
   const [slots,     setSlots]     = useState<(DailyXIPlayer | null)[]>(() => Array(11).fill(null));
   const [entryMeta, setEntryMeta] = useState<DailyXIEntryMeta | null>(null);
@@ -261,10 +263,20 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   const [justPicked, setJustPicked] = useState<DailyXIPlayer | null>(null);
   // Increments on every spin — forces Framer Motion key change so animation always fires
   const [spinRunId, setSpinRunId]   = useState(0);
+  // Final submit state — remote save only happens once, after all 11 slots are filled
+  const [submitted,   setSubmitted]   = useState(false);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Stable refs — these never go stale inside the interval closure
   const stablePoolRef  = useRef<DailyXIPlayer[]>([]);
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  // slotsRef mirrors the slots state so interval callbacks can read current slots
+  // without relying on the prev => updater form (which blocks signing calls).
+  const slotsRef       = useRef<(DailyXIPlayer | null)[]>(Array(11).fill(null));
+
+  // Keep slotsRef in sync with slots state so interval closures always see current slots
+  useEffect(() => { slotsRef.current = slots; }, [slots]);
 
   // Step 1 — hydrate from localStorage immediately
   useEffect(() => {
@@ -274,15 +286,17 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   }, []);
 
   // Step 2 — if wallet connected, hydrate from API and merge (API wins)
+  // If a remote entry exists, mark as already submitted — no re-submit needed.
   useEffect(() => {
     if (!isConnected || !address) return;
     fetchDailyXIRemote(address).then(remote => {
       if (!remote) return;
       saveTodayXI(remote);
       setSlots(remote);
+      setSubmitted(true);  // remote entry exists → already submitted today
     }).catch(() => {/* silent */});
     fetchDailyXIEntryMeta(address).then(meta => {
-      if (meta) setEntryMeta(meta);
+      if (meta) { setEntryMeta(meta); setSubmitted(true); }
     }).catch(() => {/* silent */});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address]);
@@ -349,17 +363,18 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
           clearInterval(intervalRef.current!);
           intervalRef.current = null;
           setJustPicked(finalPlayer);
-          setSlots(prev => {
-            const next = [...prev];
-            next[capturedNextIdx] = finalPlayer;
-            // Always save to localStorage first
-            saveTodayXI(next);
-            // If wallet connected, fire remote save (non-blocking)
-            if (address) {
-              saveDailyXIRemote(address, next).catch(() => {/* silent */});
-            }
-            return next;
-          });
+
+          // Build next slots using ref (avoids stale closure inside setSlots updater)
+          const nextSlots = [...slotsRef.current];
+          nextSlots[capturedNextIdx] = finalPlayer;
+
+          // 1. Save to localStorage immediately — always the source of truth
+          saveTodayXI(nextSlots);
+
+          // 2. Update React state
+          // Remote save is deferred — only happens on final submit after all 11 are filled.
+          setSlots(nextSlots);
+
           setSpinning(false);
         }
       }, TICK_MS);
@@ -372,7 +387,37 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
     setSlots(Array(11).fill(null));
     setSpinning(false);
     setTickerIdx(0);
+    setSubmitted(false);
+    setSubmitError(null);
   };
+
+  // Final submit — one signature, one remote save, only after all 11 slots are filled.
+  const handleSubmitFinalXI = useCallback(async () => {
+    if (!allFilled || submitting || submitted) return;
+    if (!isConnected || !address) return; // wallet not connected — show guidance only
+
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const nonce     = generateNonce();
+      const message   = buildPredixiAuthMessage(address, 'daily-xi', nonce);
+      const signature = await signMessageAsync({ message });
+      // saveDailyXIRemote throws on any failure with the actual server reason
+      await saveDailyXIRemote(address, slots as DailyXIPlayer[], undefined, { message, signature });
+      setSubmitted(true);
+      // Refresh entry meta so scoring panel updates if already scored
+      fetchDailyXIEntryMeta(address)
+        .then(meta => { if (meta) setEntryMeta(meta); })
+        .catch(() => {/* silent */});
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : 'Submit failed — please try again';
+      // User rejected the wallet signature — not an error, just a cancellation
+      const isCancelled = /rejected|denied|cancelled|cancel/i.test(raw);
+      setSubmitError(isCancelled ? 'Signature cancelled — tap Submit XI to try again' : raw);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [allFilled, submitting, submitted, isConnected, address, slots, signMessageAsync]);
 
   if (!hydrated) return null;
 
@@ -442,6 +487,11 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             onReset={handleReset}
             earnedXp={entryMeta?.earnedXp}
             status={entryMeta?.status}
+            onSubmit={handleSubmitFinalXI}
+            submitting={submitting}
+            submitted={submitted}
+            isConnected={isConnected}
+            submitError={submitError}
           />
         ) : (
           <div className="space-y-3">
@@ -516,7 +566,9 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
         <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
           <div className="flex items-center gap-1.5">
             <ChevronRight size={9} className="text-white/15" />
-            <p className="text-[9px] text-white/15 font-mono">{isConnected && address ? "Saved · Synced to account" : "Local · Connect wallet to sync"}</p>
+            <p className="text-[9px] text-white/15 font-mono">
+              {submitted ? "Submitted · Synced to account" : isConnected && address ? "Local · Submit XI to sync" : "Local · Connect wallet to submit"}
+            </p>
           </div>
           {filled > 0 && !spinning && (
             <button type="button" onClick={handleReset}

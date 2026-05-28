@@ -170,7 +170,7 @@ export function AnimatedHeroIntro() {
     <section
       className={cn(
         "relative w-full overflow-hidden",
-        "min-h-[88vh] sm:min-h-screen",
+        "min-h-mobile-screen-safe sm:min-h-screen",
         "flex flex-col items-center justify-center",
       )}
       aria-label="PrediXI cinematic hero"
