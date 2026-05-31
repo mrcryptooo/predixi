@@ -357,18 +357,24 @@ export default function ProfilePage() {
   const [profile,     setProfile]     = useState<ApiProfile | null>(null);
   const [predictions, setPredictions] = useState<ApiPrediction[]>([]);
   const [matchMeta,   setMatchMeta]   = useState<Record<string, MatchMeta>>({});
-  const [loading,     setLoading]     = useState(false);
+  const [loading,       setLoading]       = useState(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
+  // Badge state — populated by /api/badges (read-only, no awards here)
+  const [earnedBadgeIds, setEarnedBadgeIds] = useState<Set<string>>(new Set<string>());
+  // earnedAtMap: badgeId → ISO earnedAt timestamp (for "Unlocked Jan 1" display)
+  const [earnedAtMap,    setEarnedAtMap]    = useState<Map<string, string>>(new Map<string, string>());
 
   useEffect(() => {
     if (!address) {
       setProfile(null);
       setPredictions([]);
+      setEarnedBadgeIds(new Set<string>());
+      setEarnedAtMap(new Map<string, string>());
       return;
     }
     setLoading(true);
     let done = 0;
-    const finish = () => { if (++done === 3) setLoading(false); };
+    const finish = () => { if (++done === 4) setLoading(false); };
     fetch(`/api/profiles?walletAddress=${address}`)
       .then(r => r.json())
       .then(d => { if (d.success) setProfile(d.profile); })
@@ -377,6 +383,21 @@ export default function ProfilePage() {
     fetch(`/api/predictions?walletAddress=${address}`)
       .then(r => r.json())
       .then(d => { if (d.success) setPredictions(d.predictions ?? []); })
+      .catch(() => {})
+      .finally(finish);
+    // Earned badges — read-only, no awards happen here
+    fetch(`/api/badges?walletAddress=${address}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          setEarnedBadgeIds(new Set<string>((d.earnedBadgeIds ?? []) as string[]));
+          const atMap = new Map<string, string>();
+          for (const eb of (d.earnedBadges ?? []) as { badgeId: string; earnedAt: string }[]) {
+            atMap.set(eb.badgeId, eb.earnedAt);
+          }
+          setEarnedAtMap(atMap);
+        }
+      })
       .catch(() => {})
       .finally(finish);
     // Build match metadata map for fd-* IDs
@@ -412,10 +433,13 @@ export default function ProfilePage() {
     badgeIds:           [],
   } : null;
 
-  const accuracy      = profile?.accuracy ?? 0;
+  const accuracy       = profile?.accuracy ?? 0;
   const historyEntries = predictions.map(p => toHistoryEntry(p, matchMeta));
-  const lockedBadges   = badges; // badge system not built yet
-  const displayedLocked = showAllBadges ? lockedBadges : lockedBadges.slice(0, 4);
+  // Split badges into earned (DB-confirmed) and locked (everything else).
+  const earnedBadges    = badges.filter(b => earnedBadgeIds.has(b.id));
+  const lockedBadges    = badges.filter(b => !earnedBadgeIds.has(b.id));
+  // 6 = 2 cols × 3 rows initial view in the compact grid
+  const displayedLocked = showAllBadges ? lockedBadges : lockedBadges.slice(0, 6);
 
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans relative overflow-hidden">
@@ -497,26 +521,93 @@ export default function ProfilePage() {
           </>
         ) : null}
 
-        {/* ── Locked badges (always shown — badge system coming soon) ───── */}
+        {/* ── Badge Collection ──────────────────────────────────────────── */}
         <section>
-          <SectionHeader title={`Locked Badges (${lockedBadges.length})`} />
-          <div className="space-y-2">
-            {displayedLocked.map((badge, i) => (
-              <BadgeCard key={badge.id} badge={badge} earned={false} delay={i * 0.04} />
-            ))}
+          {/* Section header with progress counter */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <AccentBar color="primary" />
+              <h2 className="text-[11px] font-bold text-white/50 uppercase tracking-[0.14em]">
+                Badge Collection
+              </h2>
+            </div>
+            {isConnected && (
+              <span className="text-[10px] font-mono text-white/30">
+                <span className={cn(earnedBadges.length > 0 ? "text-white/60 font-bold" : "")}>
+                  {earnedBadges.length}
+                </span>
+                <span className="text-white/20"> / {badges.length} unlocked</span>
+              </span>
+            )}
           </div>
-          {lockedBadges.length > 4 && (
-            <button
-              type="button"
-              onClick={() => setShowAllBadges(p => !p)}
-              className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/35 hover:text-primary transition-colors duration-150"
-            >
-              {showAllBadges ? (
-                <><span>↑</span> Show less</>
+
+          {/* ── Earned badges ───────────────────────────────────────────── */}
+          {isConnected && (
+            <div className="mb-6">
+              {earnedBadges.length > 0 ? (
+                <div className="space-y-2.5">
+                  {earnedBadges.map((badge, i) => (
+                    <BadgeCard
+                      key={badge.id}
+                      badge={badge}
+                      earned={true}
+                      earnedAt={earnedAtMap.get(badge.id)}
+                      delay={i * 0.05}
+                    />
+                  ))}
+                </div>
               ) : (
-                <><span>↓</span> Show {lockedBadges.length - 4} more locked badges</>
+                <div className={cn(
+                  "relative overflow-hidden rounded-2xl border border-white/[0.06]",
+                  "bg-gradient-to-r from-white/[0.02] to-transparent",
+                  "px-4 py-5 flex items-center gap-3",
+                )}>
+                  <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center text-lg flex-shrink-0 opacity-40">
+                    🏅
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-white/35">No badges yet</p>
+                    <p className="text-[10px] font-mono text-white/20 mt-0.5">
+                      Place your first prediction to start unlocking badges and XP.
+                    </p>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
+          )}
+
+          {/* ── Locked badges — compact 2-column grid ───────────────────── */}
+          {lockedBadges.length > 0 && (
+            <div>
+              <p className="text-[10px] font-mono text-white/20 uppercase tracking-[0.12em] mb-3">
+                Locked — {lockedBadges.length} remaining
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {displayedLocked.map((badge, i) => (
+                  <BadgeCard
+                    key={badge.id}
+                    badge={badge}
+                    earned={false}
+                    compact
+                    delay={i * 0.02}
+                    className="w-full"
+                  />
+                ))}
+              </div>
+              {lockedBadges.length > 6 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllBadges(p => !p)}
+                  className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-primary transition-colors duration-150"
+                >
+                  {showAllBadges ? (
+                    <><ChevronUp size={12} /> Show less</>
+                  ) : (
+                    <><ChevronDown size={12} /> Show all {lockedBadges.length} locked badges</>
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </section>
 

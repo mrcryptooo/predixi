@@ -13,6 +13,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }         from '@/lib/supabase/server'
 import { verifyOptionalWalletAuth }        from '@/lib/auth/wallet-signature'
 import { createWCCommitment }             from '@/lib/onchain/commitment'
+import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -177,6 +178,29 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error('[POST /api/wc-predictions]', error)
       return err('Failed to save WC prediction', 500)
+    }
+
+    // ── Badge check (fire-and-forget — never blocks the main response) ────────
+    // WC route doesn't upsert a profile, so we fetch it here (lightweight).
+    // Fails silently if profile doesn't exist yet or badge award errors.
+    try {
+      const { data: wcProfile } = await supabase
+        .from('profiles')
+        .select('id, created_at')
+        .eq('wallet_address', normalizedWallet)
+        .maybeSingle()
+
+      if (wcProfile) {
+        await checkAndAwardBadges({
+          walletAddress:    normalizedWallet,
+          profileId:        wcProfile.id as string,
+          profileCreatedAt: wcProfile.created_at as string,
+          trigger:          'worldcup_post',
+          supabase,
+        })
+      }
+    } catch (badgeErr) {
+      console.warn('[POST /api/wc-predictions] badge award error (non-fatal):', badgeErr)
     }
 
     return NextResponse.json({

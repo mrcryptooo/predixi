@@ -24,6 +24,7 @@ import { getServerSupabaseClient }         from '@/lib/supabase/server'
 import { getMatchById }                    from '@/data/matches'
 import { SIGNATURE_MAX_AGE_MS }            from '@/lib/prediction-message'
 import { createPredictionCommitment }      from '@/lib/onchain/commitment'
+import { checkAndAwardBadges }             from '@/lib/badges/checkAndAward'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Base public client — proxy-aware, created once at module load
@@ -198,7 +199,7 @@ export async function POST(req: NextRequest) {
         { wallet_address: normalizedAddress },
         { onConflict: 'wallet_address' },
       )
-      .select('id, wallet_address, xp, rank, streak, total_predictions, correct_predictions')
+      .select('id, wallet_address, xp, rank, streak, total_predictions, correct_predictions, created_at')
       .single()
 
     if (profileErr || !profile) {
@@ -334,6 +335,21 @@ export async function POST(req: NextRequest) {
     if (hashErr) {
       console.error('[POST /api/predictions] commitment_hash update:', hashErr)
       return err('Failed to record commitment hash', 500)
+    }
+
+    // ── 8. Badge check (fire-and-forget — never blocks the main response) ─────
+    // Runs after all core writes succeed. Badge errors are logged but suppressed
+    // so a badge system failure never causes the prediction POST to return 500.
+    try {
+      await checkAndAwardBadges({
+        walletAddress:    normalizedAddress,
+        profileId:        profile.id as string,
+        profileCreatedAt: profile.created_at as string,
+        trigger:          'prediction_post',
+        supabase,
+      })
+    } catch (badgeErr) {
+      console.warn('[POST /api/predictions] badge award error (non-fatal):', badgeErr)
     }
 
     // walletAuth: mandatory verification already passed above (Phase 4D)
