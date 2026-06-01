@@ -541,11 +541,11 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* ── Earned badges ───────────────────────────────────────────── */}
+          {/* ── Earned badges — vertical collectible card grid ───────────── */}
           {isConnected && (
             <div className="mb-6">
               {earnedBadges.length > 0 ? (
-                <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {earnedBadges.map((badge, i) => (
                     <BadgeCard
                       key={badge.id}
@@ -576,21 +576,19 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* ── Locked badges — compact 2-column grid ───────────────────── */}
+          {/* ── Locked badges — same vertical card grid, locked state ────── */}
           {lockedBadges.length > 0 && (
             <div>
               <p className="text-[10px] font-mono text-white/20 uppercase tracking-[0.12em] mb-3">
                 Locked — {lockedBadges.length} remaining
               </p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {displayedLocked.map((badge, i) => (
                   <BadgeCard
                     key={badge.id}
                     badge={badge}
                     earned={false}
-                    compact
                     delay={i * 0.02}
-                    className="w-full"
                   />
                 ))}
               </div>
