@@ -489,6 +489,89 @@ export default function ProfilePage() {
               <DailyXIProfileCard />
             </section>
 
+            {/* ── Badge Collection ──────────────────────────────────────── */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <AccentBar color="primary" />
+                  <h2 className="text-[11px] font-bold text-white/50 uppercase tracking-[0.14em]">
+                    Badge Collection
+                  </h2>
+                </div>
+                <span className="text-[10px] font-mono text-white/30">
+                  <span className={cn(earnedBadges.length > 0 ? "text-white/60 font-bold" : "")}>
+                    {earnedBadges.length}
+                  </span>
+                  <span className="text-white/20"> / {badges.length} unlocked</span>
+                </span>
+              </div>
+
+              {/* Earned badges grid */}
+              <div className="mb-6">
+                {earnedBadges.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {earnedBadges.map((badge, i) => (
+                      <BadgeCard
+                        key={badge.id}
+                        badge={badge}
+                        earned={true}
+                        earnedAt={earnedAtMap.get(badge.id)}
+                        delay={i * 0.05}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className={cn(
+                    "relative overflow-hidden rounded-2xl border border-white/[0.06]",
+                    "bg-gradient-to-r from-white/[0.02] to-transparent",
+                    "px-4 py-5 flex items-center gap-3",
+                  )}>
+                    <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center text-lg flex-shrink-0 opacity-40">
+                      🏅
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white/35">No badges yet</p>
+                      <p className="text-[10px] font-mono text-white/20 mt-0.5">
+                        Place your first prediction to start unlocking badges and XP.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Locked badges grid */}
+              {lockedBadges.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-mono text-white/20 uppercase tracking-[0.12em] mb-3">
+                    Locked — {lockedBadges.length} remaining
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {displayedLocked.map((badge, i) => (
+                      <BadgeCard
+                        key={badge.id}
+                        badge={badge}
+                        earned={false}
+                        delay={i * 0.02}
+                      />
+                    ))}
+                  </div>
+                  {lockedBadges.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllBadges(p => !p)}
+                      className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-primary transition-colors duration-150"
+                    >
+                      {showAllBadges ? (
+                        <><ChevronUp size={12} /> Show less</>
+                      ) : (
+                        <><ChevronDown size={12} /> Show all {lockedBadges.length} locked badges</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+
             {/* ── World Cup Picks ───────────────────────────────────────── */}
             <section>
               <SectionHeader title="World Cup Picks" />
@@ -520,94 +603,6 @@ export default function ProfilePage() {
             </section>
           </>
         ) : null}
-
-        {/* ── Badge Collection ──────────────────────────────────────────── */}
-        <section>
-          {/* Section header with progress counter */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <AccentBar color="primary" />
-              <h2 className="text-[11px] font-bold text-white/50 uppercase tracking-[0.14em]">
-                Badge Collection
-              </h2>
-            </div>
-            {isConnected && (
-              <span className="text-[10px] font-mono text-white/30">
-                <span className={cn(earnedBadges.length > 0 ? "text-white/60 font-bold" : "")}>
-                  {earnedBadges.length}
-                </span>
-                <span className="text-white/20"> / {badges.length} unlocked</span>
-              </span>
-            )}
-          </div>
-
-          {/* ── Earned badges — vertical collectible card grid ───────────── */}
-          {isConnected && (
-            <div className="mb-6">
-              {earnedBadges.length > 0 ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {earnedBadges.map((badge, i) => (
-                    <BadgeCard
-                      key={badge.id}
-                      badge={badge}
-                      earned={true}
-                      earnedAt={earnedAtMap.get(badge.id)}
-                      delay={i * 0.05}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className={cn(
-                  "relative overflow-hidden rounded-2xl border border-white/[0.06]",
-                  "bg-gradient-to-r from-white/[0.02] to-transparent",
-                  "px-4 py-5 flex items-center gap-3",
-                )}>
-                  <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center text-lg flex-shrink-0 opacity-40">
-                    🏅
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-white/35">No badges yet</p>
-                    <p className="text-[10px] font-mono text-white/20 mt-0.5">
-                      Place your first prediction to start unlocking badges and XP.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Locked badges — same vertical card grid, locked state ────── */}
-          {lockedBadges.length > 0 && (
-            <div>
-              <p className="text-[10px] font-mono text-white/20 uppercase tracking-[0.12em] mb-3">
-                Locked — {lockedBadges.length} remaining
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {displayedLocked.map((badge, i) => (
-                  <BadgeCard
-                    key={badge.id}
-                    badge={badge}
-                    earned={false}
-                    delay={i * 0.02}
-                  />
-                ))}
-              </div>
-              {lockedBadges.length > 6 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllBadges(p => !p)}
-                  className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-primary transition-colors duration-150"
-                >
-                  {showAllBadges ? (
-                    <><ChevronUp size={12} /> Show less</>
-                  ) : (
-                    <><ChevronDown size={12} /> Show all {lockedBadges.length} locked badges</>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-        </section>
 
         {/* ── Base App future identity ───────────────────────────────────── */}
         <motion.section
