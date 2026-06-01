@@ -26,6 +26,7 @@ import {
   type MatchOutcome,
   type PredictionRecord,
 } from '@/lib/settlement'
+import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -99,7 +100,8 @@ export async function POST(req: NextRequest) {
         wallet_address,
         xp,
         correct_predictions,
-        total_predictions
+        total_predictions,
+        created_at
       )
     `)
     .eq('match_id', matchIdClean)
@@ -154,7 +156,45 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── 7. Response ────────────────────────────────────────────────────────────
+  // ── 7. Settlement-time badge checks — streak + hat-trick ──────────────────
+  // Run for every unique wallet affected by this match settlement.
+  // Fire-and-forget: badge errors are logged but never block the settlement
+  // response.  All badge writes are idempotent (DB unique constraints).
+  if (settledCount > 0 && predictions && predictions.length > 0) {
+    const seenProfiles = new Set<string>()
+
+    for (const pred of predictions as unknown as Array<PredictionRecord & {
+      profiles: { wallet_address: string; created_at?: string } | null | Array<{ wallet_address: string; created_at?: string }>
+    }>) {
+      const profile = Array.isArray(pred.profiles) ? pred.profiles[0] : pred.profiles
+      if (!profile || seenProfiles.has(pred.profile_id)) continue
+      seenProfiles.add(pred.profile_id)
+
+      try {
+        // Access created_at via Record cast — the untyped Supabase select
+        // includes it because we added it to the profiles sub-select above,
+        // but the PredictionRecord type in settlement.ts predates that addition.
+        const profileCreatedAt =
+          ((profile as Record<string, unknown>).created_at as string | undefined)
+          ?? new Date().toISOString()
+
+        await checkAndAwardBadges({
+          walletAddress:    profile.wallet_address.toLowerCase(),
+          profileId:        pred.profile_id,
+          profileCreatedAt,
+          trigger:          'settlement_sweep',
+          supabase,
+        })
+      } catch (badgeErr) {
+        console.warn(
+          `[admin/settle-match] badge check error for profile ${pred.profile_id}:`,
+          badgeErr instanceof Error ? badgeErr.message : String(badgeErr),
+        )
+      }
+    }
+  }
+
+  // ── 8. Response ────────────────────────────────────────────────────────────
   return NextResponse.json({
     success:    allErrors.length === 0,
     matchId:    matchIdClean,

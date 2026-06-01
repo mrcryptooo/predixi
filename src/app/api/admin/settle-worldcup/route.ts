@@ -20,6 +20,11 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { settleWCPrediction, type WCPredictionRow } from '@/lib/worldcup-settlement'
+import { checkAndAwardBadges }                      from '@/lib/badges/checkAndAward'
+
+// WC champion prediction keys that trigger the worldcup-champion badge.
+// Must match WC_CHAMPION_KEYS in checkAndAward.ts.
+const WC_CHAMPION_KEYS_LOCAL = new Set(['wc-champion'])
 
 function err(message: string, status: number) {
   return NextResponse.json({ success: false, error: message }, { status })
@@ -83,6 +88,8 @@ export async function POST(req: NextRequest) {
   let totalXPAwarded = 0
   let duplicates     = 0
   const errors: string[] = []
+  // Track winner wallet addresses for post-loop badge awards
+  const winnerWallets: string[] = []
 
   for (const row of pending) {
     const result = await settleWCPrediction(supabase, row, normalizedCorrect)
@@ -94,6 +101,7 @@ export async function POST(req: NextRequest) {
 
     if (result.isWinner) {
       winners++
+      winnerWallets.push(row.wallet_address.toLowerCase())
       if (result.xpDuplicate) {
         duplicates++
       } else {
@@ -101,6 +109,36 @@ export async function POST(req: NextRequest) {
       }
     } else {
       losers++
+    }
+  }
+
+  // ── Award worldcup-champion badge to winners (champion prediction only) ────
+  // Only fires when this settlement is for the WC champion prediction key.
+  // Badge logic is fire-and-forget: errors are logged but never block the response.
+  if (WC_CHAMPION_KEYS_LOCAL.has(key) && winnerWallets.length > 0) {
+    for (const walletAddress of winnerWallets) {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, created_at')
+          .eq('wallet_address', walletAddress)
+          .maybeSingle()
+
+        if (profile) {
+          await checkAndAwardBadges({
+            walletAddress,
+            profileId:        profile.id as string,
+            profileCreatedAt: profile.created_at as string,
+            trigger:          'worldcup_settle',
+            supabase,
+          })
+        }
+      } catch (badgeErr) {
+        console.warn(
+          `[settle-worldcup] worldcup-champion badge error for ${walletAddress}:`,
+          badgeErr instanceof Error ? badgeErr.message : String(badgeErr),
+        )
+      }
     }
   }
 
