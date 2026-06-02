@@ -62,11 +62,15 @@ export async function findQualifiedMatches(
   supabase: SupabaseClient,
   limit:    number,
 ): Promise<{ qualified: MatchCandidate[]; scanned: number; error?: string }> {
+  // Note: actual_outcome IS NULL filter removed — sync-results now populates
+  // actual_outcome immediately on status=finished, so using it as a settlement
+  // guard blocks auto-settle.  Idempotency is enforced by:
+  //   • predictions.is_correct IS NULL  (only unsettled predictions processed)
+  //   • xp_events unique constraint      (duplicate XP impossible)
   const { data: candidates, error: matchErr } = await supabase
     .from('matches')
     .select('id, home_team_name, away_team_name, home_score, away_score, kickoff')
     .eq('status', 'finished')
-    .is('actual_outcome', null)
     .not('home_score', 'is', null)
     .not('away_score', 'is', null)
     .order('kickoff', { ascending: true })
