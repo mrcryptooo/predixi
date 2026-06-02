@@ -1,7 +1,8 @@
 /**
  * GET /api/cron/auto-settle
  *
- * Vercel Cron endpoint — triggered every 2 hours via vercel.json.
+ * Vercel Cron endpoint — triggered daily at 03:00 UTC via vercel.json.
+ * Schedule: 0 3 * * *  (Hobby plan limit: daily only; upgrade to Pro for sub-daily).
  * Scans finished matches and settles unsettled predictions automatically.
  *
  * Auth:  Authorization: Bearer <CRON_SECRET>
