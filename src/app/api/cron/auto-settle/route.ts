@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/auto-settle
  *
- * Vercel Cron endpoint — triggered every 15 minutes via vercel.json.
+ * Vercel Cron endpoint — triggered every 2 hours via vercel.json.
  * Scans finished matches and settles unsettled predictions automatically.
  *
  * Auth:  Authorization: Bearer <CRON_SECRET>

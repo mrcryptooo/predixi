@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { settlePrediction, type PredictionRecord } from '@/lib/settlement'
+import { checkAndAwardBadges }                     from '@/lib/badges/checkAndAward'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -146,7 +147,8 @@ export async function runAutoSettle(
           wallet_address,
           xp,
           correct_predictions,
-          total_predictions
+          total_predictions,
+          created_at
         )
       `)
       .eq('match_id', matchId)
@@ -194,6 +196,44 @@ export async function runAutoSettle(
     totalPredictions += matchSettledCount
     totalCorrect     += matchCorrectCount
     totalXPAwarded   += matchXP
+
+    // ── Badge sweep — mirrors settle-match/route.ts step 7 ────────────────────
+    // Run for every unique profile affected by this match's settlement.
+    // Fire-and-forget: badge errors are logged but never block the settlement
+    // result or increment allErrors.  All badge writes are idempotent.
+    if (matchSettledCount > 0) {
+      const seenProfiles = new Set<string>()
+
+      for (const pred of predictions as unknown as Array<PredictionRecord & {
+        profiles:
+          | { wallet_address: string; created_at?: string }
+          | Array<{ wallet_address: string; created_at?: string }>
+          | null
+      }>) {
+        const profile = Array.isArray(pred.profiles) ? pred.profiles[0] : pred.profiles
+        if (!profile || seenProfiles.has(pred.profile_id)) continue
+        seenProfiles.add(pred.profile_id)
+
+        try {
+          const profileCreatedAt =
+            ((profile as Record<string, unknown>).created_at as string | undefined)
+            ?? new Date().toISOString()
+
+          await checkAndAwardBadges({
+            walletAddress:    profile.wallet_address.toLowerCase(),
+            profileId:        pred.profile_id,
+            profileCreatedAt,
+            trigger:          'settlement_sweep',
+            supabase,
+          })
+        } catch (badgeErr) {
+          console.warn(
+            `[auto-settle] badge check error for profile ${pred.profile_id}:`,
+            badgeErr instanceof Error ? badgeErr.message : String(badgeErr),
+          )
+        }
+      }
+    }
   }
 
   return {
