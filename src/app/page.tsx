@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useAccount }      from "wagmi";
 import { DailyHeroes }        from "@/components/home/DailyHeroes";
-import { DailyStreak }        from "@/components/home/DailyStreak";
 import { CinematicIntro }     from "@/components/home/CinematicIntro";
 
 // Lazy-load leaderboard — below fold, not critical for LCP
@@ -468,19 +467,70 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* ── 3. DAILY STREAK ──────────────────────────────────────────────── */}
-        <section aria-label="Daily Streak">
-          <SectionHeader title="Daily Streak" />
+        {/* ── 3. ONCHAIN PROOF ─────────────────────────────────────────────── */}
+        <section aria-label="Prove your predictions on Base">
+          <SectionHeader title="Prove on Base" href="/profile" linkLabel="View proofs" />
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.38, ease: "easeOut", delay: 0.15 }}
+            className={cn(
+              "relative overflow-hidden rounded-2xl border border-primary/25",
+              "bg-gradient-to-br from-primary/10 via-[#060c24] to-[#040710]",
+            )}
           >
-            <DailyStreak isConnected={isConnected} />
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+            <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-primary opacity-[0.07] blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 px-5 py-5">
+              <div className="flex items-start gap-4">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5",
+                  "bg-primary/15 border border-primary/25",
+                  "shadow-[0_0_16px_rgba(22,82,240,0.20)]",
+                )}>
+                  <Anchor size={18} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white leading-tight">
+                    Prove Your Best Predictions on Base
+                  </p>
+                  <p className="text-[11px] text-white/35 mt-1.5 leading-relaxed">
+                    Predictions stay free. When you want extra proof, anchor your best calls on Base and keep a public onchain record forever.
+                  </p>
+                  <p className="text-[9px] font-mono text-white/20 mt-1.5">
+                    Optional · Small Base network fee
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 mt-4 pt-4 border-t border-white/[0.06] flex-wrap">
+                <Link
+                  href="/matches"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-bold",
+                    "bg-primary text-white shadow-[0_4px_16px_rgba(22,82,240,0.35)]",
+                    "hover:opacity-90 transition-all duration-150 active:scale-[0.97]",
+                  )}
+                >
+                  <Zap size={11} /> Make a Prediction
+                </Link>
+                <Link
+                  href="/profile"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold",
+                    "border border-primary/35 text-primary/80",
+                    "hover:border-primary hover:bg-primary/10 transition-all duration-150 active:scale-[0.97]",
+                  )}
+                >
+                  <Anchor size={11} /> View Proofs
+                </Link>
+              </div>
+            </div>
           </motion.div>
         </section>
 
-        {/* ── 4. LIVE / UPCOMING MATCHES ───────────────────────────────────── */}
+        {/* ── 4. LIVE / UPCOMING MATCHES ──────────────────────────────────── */}
         <section aria-label="Live and upcoming matches">
           <SectionHeader title={matchSectionTitle} href="/matches" linkLabel="All matches" />
           <div className="space-y-2">
@@ -515,46 +565,6 @@ export default function Home() {
         <section aria-label="Top predictors">
           <SectionHeader title="Top Predictors" href="/leaderboard" linkLabel="Full board" />
           <MiniLeaderboard currentUserId={address ?? ""} limit={5} />
-        </section>
-
-        {/* ── 7. ONCHAIN PROOF ─────────────────────────────────────────────── */}
-        <section aria-label="Onchain prediction proof">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.38, ease: "easeOut", delay: 0.18 }}
-            className={cn(
-              "relative overflow-hidden rounded-2xl border border-primary/18",
-              "bg-gradient-to-r from-primary/[0.05] to-transparent",
-              "px-5 py-4",
-            )}
-          >
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-            <div className="flex items-start gap-4">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/18 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Anchor size={16} className="text-primary/60" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white/75 leading-tight">
-                  Prove Your Best Predictions on Base
-                </p>
-                <p className="text-[11px] text-white/30 mt-1.5 leading-relaxed">
-                  Predictions stay free to play. When you want extra proof, anchor any saved prediction on Base and keep a public onchain record forever.
-                </p>
-                <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-                  <span className="text-[9px] font-mono text-white/20">
-                    Optional · Requires a small Base network fee
-                  </span>
-                  <Link
-                    href="/profile"
-                    className="text-[10px] font-semibold text-primary/60 hover:text-primary transition-colors duration-150 ml-auto whitespace-nowrap"
-                  >
-                    View Predictions →
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </motion.div>
         </section>
 
         {/* ── Footer ───────────────────────────────────────────────────────── */}

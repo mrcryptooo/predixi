@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAccount } from "wagmi";
 import {
@@ -17,6 +17,7 @@ import { AccentBar } from "@/components/ui/Card";
 import { DailyXIProfileCard } from "@/components/profile/DailyXIProfileCard";
 import { ActivityFeed }       from "@/components/profile/ActivityFeed";
 import { ReferralCard }       from "@/components/profile/ReferralCard";
+import { DailyStreak }        from "@/components/home/DailyStreak";
 import { loadAllWCPredictions, fetchWCPredictions } from "@/lib/worldcup-predictions";
 import { fetchXPEvents, XP_SOURCE_LABELS, type XPLedgerSummary } from "@/lib/xp-ledger";
 import {
@@ -456,8 +457,18 @@ export default function ProfilePage() {
     badgeIds:           [],
   } : null;
 
+  // Ref for the Match Predictions section — used by the Onchain Proof summary scroll CTA
+  const predictionsRef = useRef<HTMLElement>(null)
+
   const accuracy       = profile?.accuracy ?? 0;
   const historyEntries = predictions.map(p => toHistoryEntry(p, matchMeta));
+
+  // Onchain proof counts — derived from the already-fetched predictions state
+  // anchored:    TX confirmed and recorded in DB
+  // proof-ready: commitment hash exists but not yet anchored
+  const anchoredCount   = predictions.filter(p => p.submittedOnchain && p.txHash).length
+  const proofReadyCount = predictions.filter(p => p.commitmentHash && !p.submittedOnchain).length
+
   // Split badges into earned (DB-confirmed) and locked (everything else).
   const earnedBadges    = badges.filter(b => earnedBadgeIds.has(b.id));
   const lockedBadges    = badges.filter(b => !earnedBadgeIds.has(b.id));
@@ -505,6 +516,66 @@ export default function ProfilePage() {
                 joinedAt={syntheticUser.joinedAt}
               />
             </section>
+
+            {/* ── Daily Streak ──────────────────────────────────────────── */}
+            <section>
+              <SectionHeader title="Daily Streak" />
+              <DailyStreak isConnected={isConnected} />
+            </section>
+
+            {/* ── Onchain Proof summary ─────────────────────────────────── */}
+            {(anchoredCount > 0 || proofReadyCount > 0) && (
+              <section>
+                <SectionHeader title="Onchain Proof" />
+                <div className={cn(
+                  "relative overflow-hidden rounded-2xl border border-primary/20",
+                  "bg-gradient-to-b from-primary/[0.06] to-transparent",
+                  "px-4 py-4",
+                )}>
+                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
+
+                  <p className="text-[11px] text-white/35 leading-relaxed mb-4">
+                    Anchor your best predictions on Base and keep a public proof forever.
+                  </p>
+
+                  {/* Counts */}
+                  <div className="flex items-stretch gap-3 mb-4">
+                    <div className="flex-1 text-center py-3 rounded-xl bg-white/[0.03] border border-emerald-500/15">
+                      <p className="text-2xl font-mono font-black text-emerald-400 tabular-nums leading-none">
+                        {anchoredCount}
+                      </p>
+                      <p className="text-[9px] font-mono text-white/25 uppercase tracking-wide mt-1">
+                        Anchored
+                      </p>
+                    </div>
+                    <div className="flex-1 text-center py-3 rounded-xl bg-white/[0.03] border border-primary/15">
+                      <p className="text-2xl font-mono font-black text-primary/70 tabular-nums leading-none">
+                        {proofReadyCount}
+                      </p>
+                      <p className="text-[9px] font-mono text-white/25 uppercase tracking-wide mt-1">
+                        Proof-ready
+                      </p>
+                    </div>
+                  </div>
+
+                  {proofReadyCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => predictionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                      className={cn(
+                        "w-full flex items-center justify-center gap-2 py-2 rounded-xl",
+                        "text-[10px] font-semibold text-primary/70 hover:text-primary",
+                        "border border-primary/20 hover:border-primary/35",
+                        "bg-primary/5 hover:bg-primary/10 transition-all duration-150 active:scale-[0.99]",
+                      )}
+                    >
+                      <Anchor size={10} />
+                      Go to Match Predictions
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* ── Daily XI ──────────────────────────────────────────────── */}
             <section>
@@ -620,22 +691,27 @@ export default function ProfilePage() {
             </section>
 
             {/* ── Prediction history ────────────────────────────────────── */}
-            <section>
+            <section ref={predictionsRef}>
               <SectionHeader title="Match Predictions" />
 
-              {/* Onchain proof education card — shown once there are predictions */}
+              {/* Inline anchor-feature callout — visible once there are predictions */}
               {historyEntries.length > 0 && (
                 <div className={cn(
                   "flex items-start gap-2.5 px-3 py-2.5 mb-3 rounded-xl",
                   "bg-primary/[0.05] border border-primary/12",
                 )}>
                   <Anchor size={11} className="text-primary/40 flex-shrink-0 mt-px" />
-                  <p className="text-[10px] leading-relaxed">
-                    <span className="font-bold text-white/45">Onchain Proof</span>
-                    <span className="text-white/25 ml-1.5">
-                      Anchor your strongest predictions on Base. Optional — does not affect gameplay or XP.
-                    </span>
-                  </p>
+                  <div>
+                    <p className="text-[10px] font-bold text-white/45 leading-none mb-0.5">
+                      Proof-ready Predictions
+                    </p>
+                    <p className="text-[10px] text-white/25 leading-relaxed">
+                      Your predictions stay free. Anchor only the calls you want to prove publicly on Base.
+                    </p>
+                    <p className="text-[9px] font-mono text-white/18 mt-1">
+                      Optional · Requires a small Base network fee
+                    </p>
+                  </div>
                 </div>
               )}
 
