@@ -3,19 +3,41 @@
  *
  * Admin-only smart sync. Fetches current status/scores from football APIs
  * for matches that are not yet finished or are missing scores, within a
- * ±1 day kickoff window. Updates matches table only — no settlement.
+ * configurable kickoff window. Updates matches table only — no settlement.
  *
  * Auth:   x-admin-key header vs ADMIN_SETTLEMENT_KEY env var
  * APIs:   football-data.org (fd- prefix)  →  FOOTBALL_DATA_TOKEN
  *         api-football       (apf- prefix) →  API_FOOTBALL_KEY
- * Limit:  max 20 candidates, one API call per match
+ *
+ * Request body (all optional — safe defaults shown):
+ *   {
+ *     "daysBack":    number   // how far back to scan (default 1, max 60)
+ *     "daysForward": number   // how far forward to scan (default 1, max 7)
+ *     "limit":       number   // max candidates to check (default 20, max 100)
+ *     "dryRun":      boolean  // true = list candidates, no API calls or DB writes
+ *   }
+ *
+ * To backfill stale past matches (e.g. 30 days of stuck-upcoming fd- matches):
+ *   { "daysBack": 30, "daysForward": 1, "limit": 50, "dryRun": true }
+ *   then re-run with dryRun:false once the candidate list looks correct.
+ *
+ * Notes:
+ *   - dryRun skips all API calls and DB updates — safe to call anytime
+ *   - dryRun:false makes one API call per syncable candidate (watch rate limits)
+ *   - Does NOT settle predictions; run auto-settle afterwards
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { normalizeFdStatus, normalizeApfStatus } from '@/lib/football/status'
 
-const CANDIDATE_LIMIT = 20
+// ── Limits ────────────────────────────────────────────────────────────────────
+const CANDIDATE_LIMIT_DEFAULT  = 20
+const CANDIDATE_LIMIT_MAX      = 100
+const DAYS_BACK_DEFAULT        = 1
+const DAYS_BACK_MAX            = 60    // covers ~2 months of stale matches
+const DAYS_FORWARD_DEFAULT     = 1
+const DAYS_FORWARD_MAX         = 7     // no need to look far ahead
 
 type ApiResult =
   | { status: string; homeScore: number | null; awayScore: number | null }
@@ -88,30 +110,68 @@ type UpdatedMatch = {
   outcome:   string | null
 }
 
+type DryCandidate = {
+  matchId:       string
+  homeTeam:      string
+  awayTeam:      string
+  kickoff:       string
+  currentStatus: string
+  currentScore:  string | null
+  apiPrefix:     'fd' | 'apf' | 'mock'
+  canSync:       boolean
+}
+
 export async function POST(req: NextRequest) {
   // ── Auth ───────────────────────────────────────────────────────────────────
   const adminKey = process.env.ADMIN_SETTLEMENT_KEY
   if (!adminKey) return err('Admin key not configured', 500)
   if (req.headers.get('x-admin-key') !== adminKey) return err('Unauthorized', 401)
 
+  // ── Parse body (all fields optional — safe defaults apply) ─────────────────
+  let body: Record<string, unknown> = {}
+  try { body = await req.json() } catch { /* empty body is valid — use defaults */ }
+
+  const daysBack    = Math.min(
+    Math.max(0, Math.floor(typeof body.daysBack    === 'number' ? body.daysBack    : DAYS_BACK_DEFAULT)),
+    DAYS_BACK_MAX,
+  )
+  const daysForward = Math.min(
+    Math.max(0, Math.floor(typeof body.daysForward === 'number' ? body.daysForward : DAYS_FORWARD_DEFAULT)),
+    DAYS_FORWARD_MAX,
+  )
+  const limit       = Math.min(
+    Math.max(1, Math.floor(typeof body.limit       === 'number' ? body.limit       : CANDIDATE_LIMIT_DEFAULT)),
+    CANDIDATE_LIMIT_MAX,
+  )
+  const dryRun      = body.dryRun === true
+
   const fdToken  = process.env.FOOTBALL_DATA_TOKEN
   const apfKey   = process.env.API_FOOTBALL_KEY
 
   const supabase = getServerSupabaseClient()
 
-  // ── Candidate window: yesterday → tomorrow ─────────────────────────────────
-  const now       = new Date()
-  const yesterday = new Date(now); yesterday.setUTCDate(yesterday.getUTCDate() - 1)
-  const tomorrow  = new Date(now); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  // ── Candidate window ────────────────────────────────────────────────────────
+  const now  = new Date()
+  const from = new Date(now); from.setUTCDate(from.getUTCDate() - daysBack)
+  const to   = new Date(now); to.setUTCDate(to.getUTCDate() + daysForward)
+
+  // Shared window metadata attached to every response
+  const windowMeta = {
+    daysBack,
+    daysForward,
+    limit,
+    windowFrom: from.toISOString().slice(0, 10),
+    windowTo:   to.toISOString().slice(0, 10),
+  }
 
   const { data: candidates, error: queryErr } = await supabase
     .from('matches')
     .select('id, home_team_name, away_team_name, status, home_score, away_score, kickoff')
     .or('status.neq.finished,home_score.is.null,away_score.is.null')
-    .gte('kickoff', yesterday.toISOString())
-    .lte('kickoff', tomorrow.toISOString())
+    .gte('kickoff', from.toISOString())
+    .lte('kickoff', to.toISOString())
     .order('kickoff', { ascending: true })
-    .limit(CANDIDATE_LIMIT)
+    .limit(limit)
 
   if (queryErr) {
     return err(`Failed to query candidates: ${queryErr.message}`, 500)
@@ -119,10 +179,46 @@ export async function POST(req: NextRequest) {
 
   if (!candidates || candidates.length === 0) {
     return NextResponse.json({
-      success: true, scanned: 0, apiCallsUsed: 0,
+      success: true, dryRun, ...windowMeta,
+      scanned: 0, apiCallsUsed: 0,
       updated: 0, skipped: 0, errors: [],
       updatedMatches: [],
       message: 'No candidates in window.',
+    })
+  }
+
+  // ── dryRun: return candidate list — no API calls, no DB writes ───────────────
+  if (dryRun) {
+    const dryCandidates: DryCandidate[] = candidates.map(m => {
+      const id      = m.id as string
+      const prefix  = id.startsWith('fd-')  ? 'fd'
+                    : id.startsWith('apf-') ? 'apf'
+                    : 'mock'
+      const canSync = (prefix === 'fd'  && !!fdToken)
+                   || (prefix === 'apf' && !!apfKey)
+      return {
+        matchId:       id,
+        homeTeam:      m.home_team_name as string,
+        awayTeam:      m.away_team_name as string,
+        kickoff:       m.kickoff as string,
+        currentStatus: m.status as string,
+        currentScore:  m.home_score !== null && m.away_score !== null
+          ? `${m.home_score as number}–${m.away_score as number}`
+          : null,
+        apiPrefix: prefix as DryCandidate['apiPrefix'],
+        canSync,
+      }
+    })
+
+    const syncable = dryCandidates.filter(c => c.canSync).length
+    return NextResponse.json({
+      success:    true,
+      dryRun:     true,
+      ...windowMeta,
+      scanned:    candidates.length,
+      syncable,
+      candidates: dryCandidates,
+      message:    `${candidates.length} candidate(s) in window — ${syncable} syncable via API. Run with dryRun:false to fetch live results.`,
     })
   }
 
@@ -230,6 +326,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success:       errors.length === 0,
+    dryRun:        false,
+    ...windowMeta,
     scanned:       candidates.length,
     apiCallsUsed,
     updated,
