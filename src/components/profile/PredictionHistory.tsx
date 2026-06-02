@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Clock, Zap, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LeagueLogo } from "@/components/ui/LeagueLogo";
+import { AnchorPredictionButton } from "@/components/onchain/AnchorPredictionButton";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -13,87 +14,116 @@ import { LeagueLogo } from "@/components/ui/LeagueLogo";
 export type HistoryResult = "correct" | "incorrect" | "pending";
 
 export interface PredictionHistoryEntry {
-  id:           string;
-  matchLabel:   string;
-  leagueLabel:  string;
-  pickLabel:    string;
-  result:       HistoryResult;
-  xpDelta:      number;
-  date:         string;
-  leagueLogo?:  string;
-  homeCrest?:   string | null;
-  awayCrest?:   string | null;
-  homeShort?:   string;
-  awayShort?:   string;
+  id:               string;
+  matchLabel:       string;
+  leagueLabel:      string;
+  pickLabel:        string;
+  result:           HistoryResult;
+  xpDelta:          number;
+  date:             string;
+  leagueLogo?:      string;
+  homeCrest?:       string | null;
+  awayCrest?:       string | null;
+  homeShort?:       string;
+  awayShort?:       string;
+  // Onchain commitment fields — present when the prediction has a commitment hash
+  commitmentHash?:  string | null;
+  submittedOnchain?: boolean;
+  txHash?:          string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function HistoryRow({ entry, delay }: { entry: PredictionHistoryEntry; delay: number }) {
+interface HistoryRowProps {
+  entry:            PredictionHistoryEntry;
+  delay:            number;
+  onAnchorSuccess?: (predictionId: string, txHash: string) => void;
+}
+
+function HistoryRow({ entry, delay, onAnchorSuccess }: HistoryRowProps) {
   const isCorrect   = entry.result === "correct";
   const isIncorrect = entry.result === "incorrect";
   const isPending   = !isCorrect && !isIncorrect;
+
+  // Show the anchor row when a commitment hash exists (anchored or not yet anchored)
+  const showAnchorRow = Boolean(entry.commitmentHash);
 
   return (
     <motion.div
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.28, ease: "easeOut", delay }}
-      className="flex items-center gap-3 py-3.5 border-b border-white/[0.05] last:border-0"
+      className="flex flex-col border-b border-white/[0.05] last:border-0"
     >
-      {/* Result icon */}
-      <div className="flex-shrink-0 w-6 flex justify-center">
-        {isCorrect   && <CheckCircle2 size={15} className="text-success/80" />}
-        {isIncorrect && <XCircle      size={15} className="text-danger/70"  />}
-        {isPending   && <Clock        size={15} className="text-white/25"   />}
+      {/* ── Main prediction row ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 py-3.5">
+        {/* Result icon */}
+        <div className="flex-shrink-0 w-6 flex justify-center">
+          {isCorrect   && <CheckCircle2 size={15} className="text-success/80" />}
+          {isIncorrect && <XCircle      size={15} className="text-danger/70"  />}
+          {isPending   && <Clock        size={15} className="text-white/25"   />}
+        </div>
+
+        {/* Team logos */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <TeamLogo src={entry.homeCrest} name={entry.homeShort ?? "Home"} size="sm" />
+          <TeamLogo src={entry.awayCrest} name={entry.awayShort ?? "Away"} size="sm" />
+        </div>
+
+        {/* Match + league */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white/80 truncate leading-tight">
+            {entry.matchLabel}
+          </p>
+          <span className="flex items-center gap-1 mt-0.5">
+            <LeagueLogo leagueId={entry.leagueLabel} size="xs" />
+            <span className="text-[10px] text-white/30 font-mono">{entry.leagueLabel}</span>
+          </span>
+        </div>
+
+        {/* Pick + XP */}
+        <div className="text-right flex-shrink-0">
+          <p className={cn(
+            "text-xs font-semibold leading-tight",
+            isCorrect   ? "text-success/80" :
+            isIncorrect ? "text-danger/60"  : "text-white/30"
+          )}>
+            {entry.pickLabel}
+          </p>
+          {isCorrect && (
+            <div className="flex items-center gap-0.5 justify-end mt-0.5">
+              <Zap size={9} className="text-primary" />
+              <span className="text-[10px] font-mono text-success/75">+{entry.xpDelta}</span>
+            </div>
+          )}
+          {isIncorrect && (
+            <p className="text-[10px] font-mono text-white/20 mt-0.5">+0 XP</p>
+          )}
+          {isPending && (
+            <p className="text-[10px] font-mono text-white/20 mt-0.5">Pending</p>
+          )}
+        </div>
+
+        {/* Date — desktop only */}
+        <div className="text-[10px] text-white/20 font-mono flex-shrink-0 hidden sm:block w-16 text-right">
+          {entry.date}
+        </div>
       </div>
 
-      {/* Team logos */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <TeamLogo src={entry.homeCrest} name={entry.homeShort ?? "Home"} size="sm" />
-        <TeamLogo src={entry.awayCrest} name={entry.awayShort ?? "Away"} size="sm" />
-      </div>
-
-      {/* Match + league */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white/80 truncate leading-tight">
-          {entry.matchLabel}
-        </p>
-        <span className="flex items-center gap-1 mt-0.5">
-          <LeagueLogo leagueId={entry.leagueLabel} size="xs" />
-          <span className="text-[10px] text-white/30 font-mono">{entry.leagueLabel}</span>
-        </span>
-      </div>
-
-      {/* Pick + XP */}
-      <div className="text-right flex-shrink-0">
-        <p className={cn(
-          "text-xs font-semibold leading-tight",
-          isCorrect   ? "text-success/80" :
-          isIncorrect ? "text-danger/60"  : "text-white/30"
-        )}>
-          {entry.pickLabel}
-        </p>
-        {isCorrect && (
-          <div className="flex items-center gap-0.5 justify-end mt-0.5">
-            <Zap size={9} className="text-primary" />
-            <span className="text-[10px] font-mono text-success/75">+{entry.xpDelta}</span>
-          </div>
-        )}
-        {isIncorrect && (
-          <p className="text-[10px] font-mono text-white/20 mt-0.5">+0 XP</p>
-        )}
-        {isPending && (
-          <p className="text-[10px] font-mono text-white/20 mt-0.5">Pending</p>
-        )}
-      </div>
-
-      {/* Date — desktop only */}
-      <div className="text-[10px] text-white/20 font-mono flex-shrink-0 hidden sm:block w-16 text-right">
-        {entry.date}
-      </div>
+      {/* ── Anchor on Base row — only when commitment hash exists ────────── */}
+      {showAnchorRow && (
+        <div className="flex items-center justify-end pb-2.5">
+          <AnchorPredictionButton
+            predictionId={entry.id}
+            commitmentHash={entry.commitmentHash!}
+            submittedOnchain={entry.submittedOnchain ?? false}
+            txHash={entry.txHash ?? null}
+            onAnchorSuccess={onAnchorSuccess}
+          />
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -103,14 +133,16 @@ function HistoryRow({ entry, delay }: { entry: PredictionHistoryEntry; delay: nu
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PredictionHistoryProps {
-  entries: PredictionHistoryEntry[];
+  entries:          PredictionHistoryEntry[];
+  /** Forwarded to AnchorPredictionButton — updates prediction state in parent. */
+  onAnchorSuccess?: (predictionId: string, txHash: string) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function PredictionHistory({ entries }: PredictionHistoryProps) {
+export function PredictionHistory({ entries, onAnchorSuccess }: PredictionHistoryProps) {
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center gap-4 py-12 text-center">
@@ -142,7 +174,12 @@ export function PredictionHistory({ entries }: PredictionHistoryProps) {
       </div>
 
       {entries.map((entry, i) => (
-        <HistoryRow key={entry.id} entry={entry} delay={Math.min(i * 0.05, 0.25)} />
+        <HistoryRow
+          key={entry.id}
+          entry={entry}
+          delay={Math.min(i * 0.05, 0.25)}
+          onAnchorSuccess={onAnchorSuccess}
+        />
       ))}
     </div>
   );

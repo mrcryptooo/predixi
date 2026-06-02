@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useAccount } from "wagmi";
 import {
@@ -62,6 +62,10 @@ type ApiPrediction = {
   placedAt: string;
   pointsAwarded: number | null;
   isCorrect: boolean | null;
+  // Onchain commitment fields — returned by GET /api/predictions
+  commitmentHash:   string | null;
+  submittedOnchain: boolean;
+  txHash:           string | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,18 +89,22 @@ function toHistoryEntry(p: ApiPrediction, metaMap: Record<string, MatchMeta>): P
     : "Draw";
 
   return {
-    id:          p.id,
-    matchLabel:  `${homeShort} vs ${awayShort}`,
-    leagueLabel: leagueCode,
+    id:               p.id,
+    matchLabel:       `${homeShort} vs ${awayShort}`,
+    leagueLabel:      leagueCode,
     pickLabel,
-    result:      p.isCorrect === true ? "correct" : p.isCorrect === false ? "incorrect" : "pending",
-    xpDelta:     p.pointsAwarded ?? 0,
-    date:        new Date(p.placedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-    leagueLogo:  logo,
-    homeCrest:   meta?.homeCrest ?? null,
-    awayCrest:   meta?.awayCrest ?? null,
+    result:           p.isCorrect === true ? "correct" : p.isCorrect === false ? "incorrect" : "pending",
+    xpDelta:          p.pointsAwarded ?? 0,
+    date:             new Date(p.placedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    leagueLogo:       logo,
+    homeCrest:        meta?.homeCrest ?? null,
+    awayCrest:        meta?.awayCrest ?? null,
     homeShort,
     awayShort,
+    // Onchain commitment fields — passed through from API response
+    commitmentHash:   p.commitmentHash   ?? null,
+    submittedOnchain: p.submittedOnchain ?? false,
+    txHash:           p.txHash           ?? null,
   };
 }
 
@@ -359,6 +367,21 @@ export default function ProfilePage() {
   const [matchMeta,   setMatchMeta]   = useState<Record<string, MatchMeta>>({});
   const [loading,       setLoading]       = useState(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
+
+  // Called by AnchorPredictionButton after PATCH succeeds — updates the row in
+  // place so the button switches to "Anchored on Base ✓" without a full refetch.
+  const handleAnchorSuccess = useCallback(
+    (predictionId: string, txHash: string) => {
+      setPredictions(prev =>
+        prev.map(p =>
+          p.id === predictionId
+            ? { ...p, submittedOnchain: true, txHash }
+            : p,
+        ),
+      );
+    },
+    [],
+  );
   // Badge state — populated by /api/badges (read-only, no awards here)
   const [earnedBadgeIds, setEarnedBadgeIds] = useState<Set<string>>(new Set<string>());
   // earnedAtMap: badgeId → ISO earnedAt timestamp (for "Unlocked Jan 1" display)
@@ -599,7 +622,10 @@ export default function ProfilePage() {
             {/* ── Prediction history ────────────────────────────────────── */}
             <section>
               <SectionHeader title="Match Predictions" />
-              <PredictionHistory entries={historyEntries} />
+              <PredictionHistory
+                entries={historyEntries}
+                onAnchorSuccess={handleAnchorSuccess}
+              />
             </section>
           </>
         ) : null}

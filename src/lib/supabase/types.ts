@@ -87,6 +87,10 @@ export type PredictionRow = {
   placed_at: string               // ISO timestamp
   created_at: string
   updated_at: string
+  // Onchain commitment columns (added by supabase/add-onchain-metadata.sql)
+  commitment_hash: string | null  // keccak256 hex of the canonical payload
+  submitted_onchain: boolean      // true after user anchors on Base
+  tx_hash: string | null          // Base Mainnet tx hash after anchor
 }
 
 export type LeaderboardStatRow = {
