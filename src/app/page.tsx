@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
   Zap, Flame, Target, ArrowRight, Globe, Shield,
-  MapPin, Clock,
+  MapPin, Clock, Anchor,
 } from "lucide-react";
 import { useAccount }      from "wagmi";
 import { DailyHeroes }        from "@/components/home/DailyHeroes";
@@ -515,6 +515,46 @@ export default function Home() {
         <section aria-label="Top predictors">
           <SectionHeader title="Top Predictors" href="/leaderboard" linkLabel="Full board" />
           <MiniLeaderboard currentUserId={address ?? ""} limit={5} />
+        </section>
+
+        {/* ── 7. ONCHAIN PROOF ─────────────────────────────────────────────── */}
+        <section aria-label="Onchain prediction proof">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.38, ease: "easeOut", delay: 0.18 }}
+            className={cn(
+              "relative overflow-hidden rounded-2xl border border-primary/18",
+              "bg-gradient-to-r from-primary/[0.05] to-transparent",
+              "px-5 py-4",
+            )}
+          >
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+            <div className="flex items-start gap-4">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/18 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Anchor size={16} className="text-primary/60" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white/75 leading-tight">
+                  Prove Your Best Predictions on Base
+                </p>
+                <p className="text-[11px] text-white/30 mt-1.5 leading-relaxed">
+                  Predictions stay free to play. When you want extra proof, anchor any saved prediction on Base and keep a public onchain record forever.
+                </p>
+                <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+                  <span className="text-[9px] font-mono text-white/20">
+                    Optional · Requires a small Base network fee
+                  </span>
+                  <Link
+                    href="/profile"
+                    className="text-[10px] font-semibold text-primary/60 hover:text-primary transition-colors duration-150 ml-auto whitespace-nowrap"
+                  >
+                    View Predictions →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </section>
 
         {/* ── Footer ───────────────────────────────────────────────────────── */}

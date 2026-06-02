@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useAccount } from "wagmi";
 import {
-  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet,
+  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet, Anchor,
 } from "lucide-react";
 import { badges } from "@/data/badges";
 import { getMatchById } from "@/data/matches";
@@ -622,6 +622,23 @@ export default function ProfilePage() {
             {/* ── Prediction history ────────────────────────────────────── */}
             <section>
               <SectionHeader title="Match Predictions" />
+
+              {/* Onchain proof education card — shown once there are predictions */}
+              {historyEntries.length > 0 && (
+                <div className={cn(
+                  "flex items-start gap-2.5 px-3 py-2.5 mb-3 rounded-xl",
+                  "bg-primary/[0.05] border border-primary/12",
+                )}>
+                  <Anchor size={11} className="text-primary/40 flex-shrink-0 mt-px" />
+                  <p className="text-[10px] leading-relaxed">
+                    <span className="font-bold text-white/45">Onchain Proof</span>
+                    <span className="text-white/25 ml-1.5">
+                      Anchor your strongest predictions on Base. Optional — does not affect gameplay or XP.
+                    </span>
+                  </p>
+                </div>
+              )}
+
               <PredictionHistory
                 entries={historyEntries}
                 onAnchorSuccess={handleAnchorSuccess}

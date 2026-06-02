@@ -97,8 +97,15 @@ export function AnchorPredictionButton({
   const [cachedTxHash,  setCachedTxHash]  = useState<`0x${string}` | null>(
     propTxHash as `0x${string}` | null,
   )
+  // True once the TX confirmed in this session — used to show "Sign again" vs
+  // "Try again" in the error state (TX confirmed = only sign step needs retry)
+  const [txSucceeded,   setTxSucceeded]   = useState(false)
 
-  const patchSentRef = useRef(false)
+  const patchSentRef      = useRef(false)
+  // Ensures signMsg is called at most once per TX confirmation, regardless of
+  // how many times the effect re-runs due to wagmi/React Query re-renders
+  // between calling signMsg and isSigning transitioning to true.
+  const signTriggeredRef  = useRef(false)
 
   // ── Sync TX hook states → phase ───────────────────────────────────────────
 
@@ -111,10 +118,16 @@ export function AnchorPredictionButton({
   }, [isTxConfirming, phase])
 
   // ── Auto-trigger signMessage when TX confirms ─────────────────────────────
+  // Deps: only the values needed to DECIDE whether to sign, not isSigning/signature.
+  // signTriggeredRef prevents double-fire during the render gap between calling
+  // signMsg() and wagmi flushing isSigning=true.
   useEffect(() => {
     if (!isTxConfirmed || !hookTxHash || !address) return
     if (patchSentRef.current) return
-    if (isSigning || signature) return
+    if (signTriggeredRef.current) return   // already triggered — do not fire again
+
+    signTriggeredRef.current = true
+    setTxSucceeded(true)
 
     // Cache the hash — survives resetAnchor() for sign/PATCH retries
     setCachedTxHash(hookTxHash)
@@ -127,20 +140,30 @@ export function AnchorPredictionButton({
       signedAt:      new Date().toISOString(),
     })
     setSignedMessage(msg)
-    signMsg({ message: msg })
-  }, [isTxConfirmed, hookTxHash, address, isSigning, signature, predictionId, signMsg])
+
+    // Brief delay before prompting — lets the wallet UI clear the TX confirmation
+    // screen before presenting the sign request (prevents accidental dismissal).
+    const t = setTimeout(() => signMsg({ message: msg }), 60)
+    return () => clearTimeout(t)
+  // isSigning and signature intentionally excluded — they are not decision inputs;
+  // including them was the source of potential double-fire on re-render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTxConfirmed, hookTxHash, address, predictionId])
 
   // ── Surface sign errors ───────────────────────────────────────────────────
   useEffect(() => {
     if (!signError) return
     const raw = signError as { shortMessage?: string; message?: string }
-    setErrorMsg(raw.shortMessage ?? raw.message ?? 'Signature rejected')
+    const msg = raw.shortMessage ?? raw.message ?? 'Signature rejected'
+    console.warn('[AnchorPredictionButton] sign-pending error:', msg)
+    setErrorMsg(msg)
     setPhase('error')
   }, [signError])
 
   // ── Surface TX errors ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!anchorError) return
+    console.warn('[AnchorPredictionButton] tx error:', anchorError)
     setErrorMsg(anchorError)
     setPhase('error')
   }, [anchorError])
@@ -172,6 +195,7 @@ export function AnchorPredictionButton({
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : 'Failed to save anchor'
+        console.warn('[AnchorPredictionButton] PATCH error:', msg)
         setErrorMsg(msg)
         setPhase('error')
         patchSentRef.current = false   // allow retry
@@ -186,9 +210,12 @@ export function AnchorPredictionButton({
     patchSentRef.current = false
     setSignedMessage(null)
 
-    // If TX already confirmed but sign/PATCH failed → retry only the sign step
+    // If TX already confirmed but sign/PATCH failed → retry only the sign step.
+    // Reset signTriggeredRef so the auto-sign effect could also re-fire if needed,
+    // but we call signMsg directly here for immediate response.
     if (cachedTxHash && phase === 'error') {
       resetSign()
+      signTriggeredRef.current = false  // allow re-fire if component re-mounts
       setPhase('sign-pending')
 
       const msg = buildAnchorMessage({
@@ -202,9 +229,12 @@ export function AnchorPredictionButton({
       return
     }
 
-    // Fresh TX flow
+    // Fresh TX flow — also reset signTriggeredRef so the auto-sign effect fires
+    // when the new TX confirms.
     resetAnchor()
     resetSign()
+    signTriggeredRef.current = false
+    setTxSucceeded(false)
     setPhase('idle')
 
     anchorCommitment({
@@ -258,7 +288,9 @@ export function AnchorPredictionButton({
     'sign-pending':  'Signing proof…',
     'patching':      'Saving…',
     'done':          'Anchored on Base',
-    'error':         'Retry',
+    // "Sign again" when TX confirmed (only the sign/PATCH step needs retry, no new TX)
+    // "Try again" when TX itself failed or was rejected
+    'error':         txSucceeded ? 'Sign again' : 'Try again',
   }
 
   return (
