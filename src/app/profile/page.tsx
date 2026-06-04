@@ -516,6 +516,14 @@ export default function ProfilePage() {
   // 6 = 2 cols × 3 rows initial view in the compact grid
   const displayedLocked = showAllBadges ? lockedBadges : lockedBadges.slice(0, 6);
 
+  // Badge onchain state counts — derived from earnedBadges + badgeMintInfoMap.
+  // Re-derive automatically when handleBadgeMinted updates badgeMintInfoMap.
+  const ownedOnBaseCount = earnedBadges.filter(b => {
+    const info = badgeMintInfoMap.get(b.id);
+    return info?.mintedOnchain === true && !!info?.onchainTxHash;
+  }).length;
+  const readyToMintCount = earnedBadges.length - ownedOnBaseCount;
+
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans relative overflow-hidden">
       {/* Cinematic profile page background */}
@@ -640,6 +648,45 @@ export default function ProfilePage() {
                   <span className="text-white/20"> / {badges.length} unlocked</span>
                 </span>
               </div>
+
+              {/* ── Onchain status chips — shown once any badge has been earned ──── */}
+              {earnedBadges.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-4 -mt-1">
+                  {ownedOnBaseCount > 0 && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-1.5 py-[3px] rounded-md",
+                      "bg-emerald-500/[0.08] border border-emerald-500/[0.15]",
+                      "text-[8px] font-mono font-semibold text-emerald-400/70 select-none",
+                    )}>
+                      <span className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0" />
+                      Owned on Base
+                      <span className="text-emerald-400 font-bold">· {ownedOnBaseCount}</span>
+                    </span>
+                  )}
+                  {readyToMintCount > 0 && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-1.5 py-[3px] rounded-md",
+                      "bg-[#00C2FF]/[0.08] border border-[#00C2FF]/[0.15]",
+                      "text-[8px] font-mono font-semibold text-[#00C2FF]/60 select-none",
+                    )}>
+                      <span className="w-1 h-1 rounded-full bg-[#00C2FF] flex-shrink-0" />
+                      Ready to Mint
+                      <span className="text-[#00C2FF]/80 font-bold">· {readyToMintCount}</span>
+                    </span>
+                  )}
+                  {lockedBadges.length > 0 && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 px-1.5 py-[3px] rounded-md",
+                      "bg-white/[0.03] border border-white/[0.07]",
+                      "text-[8px] font-mono font-semibold text-white/25 select-none",
+                    )}>
+                      <span className="w-1 h-1 rounded-full bg-white/30 flex-shrink-0" />
+                      Locked
+                      <span className="text-white/35 font-bold">· {lockedBadges.length}</span>
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Earned badges grid */}
               <div className="mb-6">
