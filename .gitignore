@@ -59,3 +59,5 @@ PRODUCTION_DEPLOY_CHECKPOINT.md
 skills-lock.json
 test-sign.mjs
 test-daily-xi-e2e.mjs
+
+.vercel

@@ -124,6 +124,12 @@ export type UserBadgeRow = {
   profile_id: string              // FK → profiles.id
   badge_id: string                // FK → badges.id
   awarded_at: string              // ISO timestamp
+  // Onchain mint state (added by supabase/add-badge-nft-minting.sql)
+  minted_onchain:  boolean        // false = Ready to Mint, true = Owned on Base
+  minted_at:       string | null  // ISO timestamp — set when mint is persisted
+  onchain_tx_hash: string | null  // Base Mainnet tx hash
+  token_id:        number | null  // ERC-1155 token ID (1–25) — null until minted
+  chain_id:        number         // always 8453 (Base Mainnet)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +149,35 @@ export type InsertUserBadge = {
   profile_id: string
   badge_id: string
   awarded_at?: string
+  // Onchain fields are optional on insert — default to false/null via DB defaults
+  minted_onchain?:  boolean
+  minted_at?:       string | null
+  onchain_tx_hash?: string | null
+  token_id?:        number | null
+  chain_id?:        number
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// badge_mint_nonces — EIP-712 nonce replay prevention
+// Added by supabase/add-badge-nft-minting.sql (Phase 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type BadgeMintNonceRow = {
+  nonce:          string          // bytes32 hex (0x-prefixed) — PRIMARY KEY
+  wallet_address: string          // lowercase 0x Ethereum address
+  badge_id:       string          // e.g. 'first-pred'
+  token_id:       number          // ERC-1155 token ID (1–25)
+  created_at:     string          // ISO timestamp — when the signature was issued
+  used_at:        string | null   // ISO timestamp — null until mint tx confirmed
+}
+
+export type InsertBadgeMintNonce = {
+  nonce:          string
+  wallet_address: string
+  badge_id:       string
+  token_id:       number
+  // created_at has DB DEFAULT now() — omit on insert
+  // used_at intentionally null on insert — set only after mint confirms
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,6 +216,11 @@ export type Database = {
         Row: UserBadgeRow
         Insert: InsertUserBadge
         Update: Partial<UserBadgeRow>
+      }
+      badge_mint_nonces: {
+        Row: BadgeMintNonceRow
+        Insert: InsertBadgeMintNonce
+        Update: Partial<BadgeMintNonceRow>
       }
     }
     Views: Record<string, never>
