@@ -3,23 +3,24 @@
 /**
  * MintBadgeButton — optional "Mint on Base" action for an earned badge.
  *
- * Flow (three wallet interactions, all user-initiated):
- *   1. Click → useMintBadge.mintBadge(badgeId)
- *      → wallet signs request message
- *      → GET /api/badges/mint-signature → EIP-712 sig, nonce
- *      → wallet signs + broadcasts mintBadge() TX
- *      → wait for Base receipt
- *      → wallet signs confirm message
- *      → PATCH /api/badges records minted_onchain=true
- *   2. Show "Owned on Base ✓" + BaseScan link
+ * Minting is optional and costs a small Base gas fee. It creates on-chain
+ * ownership proof — no extra XP is awarded for minting.
+ *
+ * Flow (one wallet interaction):
+ *   1. Click → GET /api/badges/mint-signature → EIP-712 sig + nonce
+ *   2. wallet confirms mintBadge() TX (gas fee only — the single wallet prompt)
+ *   3. wait for Base receipt
+ *   4. PATCH /api/badges verifies on-chain event → persists minted_onchain=true
+ *   5. Show "Owned on Base ✓" + BaseScan link
  *
  * Safety:
  *   • No TX is sent until the user explicitly clicks.
- *   • If TX confirms but PATCH fails, retry shows "Sign again" — no second TX.
+ *   • If TX confirms but PATCH fails, retry shows "Save again" — no second TX.
  *   • If mintedOnchain=true from props (loaded from DB), shows owned state immediately.
  *   • Renders null when wallet not connected and badge is not yet minted.
  *   • onMinted is called exactly once via a ref guard.
  *   • disabled prop prevents interaction (e.g. badge not earned by parent's knowledge).
+ *   • Locked badges never receive this button — it is only shown on earned cards.
  */
 
 import { useCallback, useEffect, useRef }          from 'react'
@@ -182,6 +183,13 @@ export function MintBadgeButton({
           title={error}
         >
           {error}
+        </span>
+      )}
+
+      {/* Gas hint — idle only, muted, no promise language */}
+      {!isActive && !error && (
+        <span className="text-[7px] font-mono text-white/18 leading-none select-none">
+          optional · small Base fee
         </span>
       )}
     </div>
