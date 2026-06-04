@@ -11,26 +11,39 @@
  *   onError → imgErr flag → emoji + gradient placeholder shows through
  */
 
-import { useState }        from "react";
-import { motion }          from "framer-motion";
-import { Lock, Sparkles }  from "lucide-react";
-import { cn }              from "@/lib/utils";
-import { rarityConfig }    from "@/data/badges";
-import type { Badge }      from "@/types";
+import { useState }             from "react";
+import { motion }               from "framer-motion";
+import { Lock }                 from "lucide-react";
+import { cn }                   from "@/lib/utils";
+import { rarityConfig }         from "@/data/badges";
+import { MintBadgeButton }      from "@/components/onchain/MintBadgeButton";
+import type { Badge }           from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BadgeCardProps {
-  badge:      Badge;
-  earned:     boolean;
+  badge:           Badge;
+  earned:          boolean;
   /** ISO timestamp — shown as "Jan 1, 2026" below the card when earned */
-  earnedAt?:  string;
-  delay?:     number;
+  earnedAt?:       string;
+  delay?:          number;
   /** @deprecated No-op; kept for backward-compat with existing call sites */
-  compact?:   boolean;
-  className?: string;
+  compact?:        boolean;
+  className?:      string;
+  // ── Onchain mint state (Phase 7) ──────────────────────────────────────────
+  /** True when DB records this badge as minted on Base Mainnet. */
+  mintedOnchain?:  boolean;
+  /** Stored tx hash from DB, or null. */
+  onchainTxHash?:  string | null;
+  /** ERC-1155 token ID on PrediXIBadges (1–19). */
+  tokenId?:        number | null;
+  /**
+   * Called once after the user successfully mints this badge and PATCH persists.
+   * Use to update parent state immediately (no full reload needed).
+   */
+  onMinted?:       (badgeId: string, txHash: `0x${string}`) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,8 +76,11 @@ export function BadgeCard({
   badge,
   earned,
   earnedAt,
-  delay     = 0,
+  delay         = 0,
   className,
+  mintedOnchain = false,
+  onchainTxHash = null,
+  onMinted,
 }: BadgeCardProps) {
   const [imgErr, setImgErr] = useState(false)
 
@@ -186,16 +202,15 @@ export function BadgeCard({
           </p>
         )}
 
-        {/* "Mint on Base · Soon" — earned cards only, passive, non-clickable */}
+        {/* Mint on Base — earned cards only; shows Ready to Mint or Owned on Base */}
         {earned && (
-          <span className={cn(
-            "inline-flex items-center gap-0.5 px-1.5 py-[3px] rounded-full mt-0.5",
-            "border border-white/[0.06] bg-white/[0.03]",
-            "text-[7px] font-mono text-white/18 leading-none select-none",
-          )}>
-            <Sparkles size={6} className="text-white/18 shrink-0" />
-            Mint on Base · Soon
-          </span>
+          <MintBadgeButton
+            badgeId={badge.id}
+            mintedOnchain={mintedOnchain}
+            txHash={onchainTxHash}
+            onMinted={onMinted}
+            className="mt-0.5"
+          />
         )}
       </div>
     </motion.div>

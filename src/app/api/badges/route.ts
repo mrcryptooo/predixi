@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     // user_badges has a UNIQUE (profile_id, badge_id) constraint — no dupes.
     const { data: userBadges, error: badgesErr } = await supabase
       .from('user_badges')
-      .select('badge_id, awarded_at')
+      .select('badge_id, awarded_at, minted_onchain, onchain_tx_hash, token_id, chain_id')
       .eq('profile_id', profile.id)
       .order('awarded_at', { ascending: true })   // oldest first → consistent order
 
@@ -115,8 +115,12 @@ export async function GET(req: NextRequest) {
       ok:             true,
       earnedBadgeIds: rows.map(r => r.badge_id),
       earnedBadges:   rows.map(r => ({
-        badgeId:  r.badge_id,
-        earnedAt: r.awarded_at,
+        badgeId:       r.badge_id,
+        earnedAt:      r.awarded_at,
+        mintedOnchain: r.minted_onchain   ?? false,
+        onchainTxHash: r.onchain_tx_hash  ?? null,
+        tokenId:       r.token_id         ?? null,
+        chainId:       r.chain_id         ?? 8453,
       })),
     })
   } catch (error) {

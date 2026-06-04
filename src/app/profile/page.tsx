@@ -45,6 +45,14 @@ type MatchMeta = {
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Onchain mint state for one earned badge — populated from GET /api/badges */
+type BadgeMintInfo = {
+  mintedOnchain: boolean;
+  onchainTxHash: string | null;
+  tokenId:       number | null;
+  chainId:       number;
+};
+
 type ApiProfile = {
   walletAddress: string;
   xp: number;
@@ -384,9 +392,11 @@ export default function ProfilePage() {
     [],
   );
   // Badge state — populated by /api/badges (read-only, no awards here)
-  const [earnedBadgeIds, setEarnedBadgeIds] = useState<Set<string>>(new Set<string>());
+  const [earnedBadgeIds,   setEarnedBadgeIds]   = useState<Set<string>>(new Set<string>());
   // earnedAtMap: badgeId → ISO earnedAt timestamp (for "Unlocked Jan 1" display)
-  const [earnedAtMap,    setEarnedAtMap]    = useState<Map<string, string>>(new Map<string, string>());
+  const [earnedAtMap,      setEarnedAtMap]      = useState<Map<string, string>>(new Map<string, string>());
+  // badgeMintInfoMap: badgeId → onchain mint state (minted_onchain, tx hash, etc.)
+  const [badgeMintInfoMap, setBadgeMintInfoMap] = useState<Map<string, BadgeMintInfo>>(new Map<string, BadgeMintInfo>());
 
   useEffect(() => {
     if (!address) {
@@ -394,6 +404,7 @@ export default function ProfilePage() {
       setPredictions([]);
       setEarnedBadgeIds(new Set<string>());
       setEarnedAtMap(new Map<string, string>());
+      setBadgeMintInfoMap(new Map<string, BadgeMintInfo>());
       return;
     }
     setLoading(true);
@@ -415,11 +426,26 @@ export default function ProfilePage() {
       .then(d => {
         if (d.ok) {
           setEarnedBadgeIds(new Set<string>((d.earnedBadgeIds ?? []) as string[]));
-          const atMap = new Map<string, string>();
-          for (const eb of (d.earnedBadges ?? []) as { badgeId: string; earnedAt: string }[]) {
+          const atMap   = new Map<string, string>();
+          const mintMap = new Map<string, BadgeMintInfo>();
+          for (const eb of (d.earnedBadges ?? []) as {
+            badgeId:       string;
+            earnedAt:      string;
+            mintedOnchain: boolean;
+            onchainTxHash: string | null;
+            tokenId:       number | null;
+            chainId:       number;
+          }[]) {
             atMap.set(eb.badgeId, eb.earnedAt);
+            mintMap.set(eb.badgeId, {
+              mintedOnchain: eb.mintedOnchain ?? false,
+              onchainTxHash: eb.onchainTxHash ?? null,
+              tokenId:       eb.tokenId       ?? null,
+              chainId:       eb.chainId       ?? 8453,
+            });
           }
           setEarnedAtMap(atMap);
+          setBadgeMintInfoMap(mintMap);
         }
       })
       .catch(() => {})
@@ -456,6 +482,21 @@ export default function ProfilePage() {
     countryFlag:        "🌐",
     badgeIds:           [],
   } : null;
+
+  // Badge mint callback — updates local state immediately after PATCH succeeds.
+  // Switches the card from "Ready to Mint" → "Owned on Base" without a full reload.
+  const handleBadgeMinted = useCallback((badgeId: string, txHash: `0x${string}`) => {
+    setBadgeMintInfoMap(prev => {
+      const next = new Map(prev);
+      next.set(badgeId, {
+        mintedOnchain: true,
+        onchainTxHash: txHash,
+        tokenId:       prev.get(badgeId)?.tokenId ?? null,
+        chainId:       8453,
+      });
+      return next;
+    });
+  }, []);
 
   // Ref for the Match Predictions section — used by the Onchain Proof summary scroll CTA
   const predictionsRef = useRef<HTMLElement>(null)
@@ -604,15 +645,22 @@ export default function ProfilePage() {
               <div className="mb-6">
                 {earnedBadges.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                    {earnedBadges.map((badge, i) => (
-                      <BadgeCard
-                        key={badge.id}
-                        badge={badge}
-                        earned={true}
-                        earnedAt={earnedAtMap.get(badge.id)}
-                        delay={i * 0.05}
-                      />
-                    ))}
+                    {earnedBadges.map((badge, i) => {
+                      const mintInfo = badgeMintInfoMap.get(badge.id);
+                      return (
+                        <BadgeCard
+                          key={badge.id}
+                          badge={badge}
+                          earned={true}
+                          earnedAt={earnedAtMap.get(badge.id)}
+                          delay={i * 0.05}
+                          mintedOnchain={mintInfo?.mintedOnchain ?? false}
+                          onchainTxHash={mintInfo?.onchainTxHash ?? null}
+                          tokenId={mintInfo?.tokenId ?? null}
+                          onMinted={handleBadgeMinted}
+                        />
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className={cn(
