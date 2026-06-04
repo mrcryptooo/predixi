@@ -1,63 +1,58 @@
 /**
- * API Route — GET /api/badges/mint-signature?badgeId=...
+ * API Route — GET /api/badges/mint-signature?badgeId=...&walletAddress=0x...
  *
  * Issues a backend EIP-712 MintBadge signature so the caller can invoke
  * mintBadge() on the PrediXIBadges contract.
  *
- * ── Auth ─────────────────────────────────────────────────────────────────────
+ * No wallet message signature required. The EIP-712 signature returned is
+ * cryptographically bound to walletAddress — only that wallet can call
+ * mintBadge() successfully because the contract verifies msg.sender == wallet
+ * inside the EIP-712 struct.
  *
- * Requires two request headers carrying an EIP-191 signed message:
- *   x-wallet-message   — URL-encoded output of buildBadgeMintRequestMessage()
- *   x-wallet-signature — 0x-prefixed ECDSA signature from the wallet
+ * ── Query params ─────────────────────────────────────────────────────────────
  *
- * The wallet address is extracted from the signed message — never from the
- * query string or request body.  If the message timestamp is older than
- * BADGE_MINT_REQUEST_MAX_AGE_MS the request is rejected.
+ *   badgeId       — badge string ID (e.g. "first-pred")
+ *   walletAddress — 0x Ethereum address of the wallet that will mint
  *
  * ── Eligibility checks ────────────────────────────────────────────────────────
  *
- *   1. badgeId query param is present and active (token ID 1–19)
- *   2. Signed message binds the correct badgeId + tokenId (anti-replay)
- *   3. Wallet owns a profile in the DB
- *   4. user_badges row exists for that profile + badgeId
+ *   1. walletAddress is a valid 0x Ethereum address
+ *   2. badgeId is present and maps to an active token ID (1–19)
+ *   3. A profile exists in the DB for walletAddress
+ *   4. A user_badges row exists for that profile + badgeId
  *   5. minted_onchain === false
  *
  * ── Success flow ─────────────────────────────────────────────────────────────
  *
  *   1. Generate random bytes32 nonce
  *   2. Insert nonce into badge_mint_nonces (used_at = null)
- *   3. Sign MintBadge(wallet, tokenId, nonce) with BADGE_SIGNER_KEY
+ *   3. Sign MintBadge(walletAddress, tokenId, nonce) with BADGE_SIGNER_KEY
  *   4. Return { ok, badgeId, tokenId, nonce, signature, expiresAt }
  *
  * ── Response ─────────────────────────────────────────────────────────────────
  *
  *   200  { ok: true, badgeId, tokenId, nonce, signature, expiresAt }
- *   400  missing/invalid badgeId or malformed headers
- *   401  missing, expired, or invalid wallet signature
+ *   400  missing/invalid params
  *   403  badge not earned by this wallet
  *   409  badge already minted on Base
  *   500  internal error (signer misconfigured, DB error)
  *
  * ── Security model ────────────────────────────────────────────────────────────
  *
- *   • Wallet is always extracted from the signed message body.
- *   • The signed message includes badgeId + tokenId — prevents using a valid
- *     mint-request signature for one badge to request a signature for another.
+ *   • The EIP-712 signature binds to walletAddress as the `wallet` field.
+ *     The contract checks msg.sender == wallet, so even if an attacker
+ *     requests a signature for another wallet, they cannot use it — only
+ *     walletAddress itself can call mintBadge() with the returned signature.
  *   • BADGE_SIGNER_KEY is never logged.
- *   • signMintAuthorization() validates the derived signer address matches
- *     the expected contract signer before issuing any signature.
- *   • The nonce is stored before the signature is returned — if the response
- *     is lost, the same nonce cannot be reissued (the insert would conflict).
- *     Phase 6 can implement idempotent re-issuance if needed.
+ *   • signMintAuthorization() validates the derived signer matches the
+ *     expected contract signer before issuing any signature.
+ *   • The nonce is stored before the signature is returned.
+ *   • If signing fails after nonce insert, the nonce row is deleted so
+ *     the user can retry cleanly.
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
-import { verifyBaseWalletAuth }           from '@/lib/auth/verify-base-wallet'
-import {
-  BADGE_MINT_REQUEST_ACTION,
-  BADGE_MINT_REQUEST_MAX_AGE_MS,
-}                                         from '@/lib/badge-mint-message'
 import {
   getTokenIdForBadge,
   isActiveBadgeTokenId,
@@ -66,19 +61,13 @@ import {
   generateMintNonce,
   signMintAuthorization,
 }                                         from '@/lib/badges/mintAuthorization'
+import { BADGE_MINT_REQUEST_MAX_AGE_MS }  from '@/lib/badge-mint-message'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Regex helpers (mirrors pattern used in PATCH /api/predictions)
+// Validation helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WALLET_LINE_RE    = /^Wallet: (0x[0-9a-fA-F]{40})$/im
-const BADGE_ID_LINE_RE  = /^Badge ID: (.+)$/im
-const TOKEN_ID_LINE_RE  = /^Token ID: (\d+)$/im
-const TIMESTAMP_LINE_RE = /^Timestamp: (.+)$/im
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Response helpers
-// ─────────────────────────────────────────────────────────────────────────────
+const ADDR_RE = /^0x[0-9a-fA-F]{40}$/
 
 function err(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status })
@@ -90,76 +79,27 @@ function err(message: string, status: number) {
 
 export async function GET(req: NextRequest) {
   try {
-    // ── 1. Read and validate badgeId query param ──────────────────────────────
-    const badgeId = req.nextUrl.searchParams.get('badgeId')
-    if (!badgeId || typeof badgeId !== 'string' || !badgeId.trim()) {
+    // ── 1. Parse and validate query params ────────────────────────────────────
+    const badgeIdParam   = req.nextUrl.searchParams.get('badgeId')
+    const walletParam    = req.nextUrl.searchParams.get('walletAddress')
+
+    if (!walletParam || !ADDR_RE.test(walletParam.trim())) {
+      return err('walletAddress query param must be a valid 0x Ethereum address', 400)
+    }
+    const signerWallet = walletParam.trim().toLowerCase()
+
+    if (!badgeIdParam || !badgeIdParam.trim()) {
       return err('badgeId query parameter is required', 400)
     }
-    const normalizedBadgeId = badgeId.trim().toLowerCase()
+    const normalizedBadgeId = badgeIdParam.trim().toLowerCase()
 
-    // Resolve token ID and verify it is an active badge (1–19)
+    // ── 2. Resolve token ID ───────────────────────────────────────────────────
     const tokenId = getTokenIdForBadge(normalizedBadgeId)
     if (tokenId === undefined || !isActiveBadgeTokenId(tokenId)) {
       return err(`badgeId '${normalizedBadgeId}' is not a valid active badge`, 400)
     }
 
-    // ── 2. Decode and validate signed message ─────────────────────────────────
-    const rawMsgHeader = req.headers.get('x-wallet-message')
-    const sigHeader    = req.headers.get('x-wallet-signature')
-
-    if (!rawMsgHeader || !sigHeader) {
-      return err('x-wallet-message and x-wallet-signature headers are required', 401)
-    }
-
-    let msgHeader: string
-    try {
-      msgHeader = decodeURIComponent(rawMsgHeader)
-    } catch {
-      return err('x-wallet-message header could not be URL-decoded', 401)
-    }
-
-    // ── 3. Extract wallet from signed message (never from query/body) ──────────
-    const walletMatch = msgHeader.match(WALLET_LINE_RE)
-    if (!walletMatch) {
-      return err('Wallet address not found in signed message', 401)
-    }
-    const signerWallet = walletMatch[1].toLowerCase()
-
-    // ── 4. Verify action string (prevents cross-action replay) ─────────────────
-    if (!msgHeader.includes(`Action: ${BADGE_MINT_REQUEST_ACTION}`)) {
-      return err('Signed message action mismatch', 401)
-    }
-
-    // ── 5. Verify message binds the expected badgeId (anti-replay across badges)
-    const msgBadgeIdMatch = msgHeader.match(BADGE_ID_LINE_RE)
-    const msgBadgeId      = msgBadgeIdMatch?.[1]?.trim().toLowerCase()
-    if (msgBadgeId !== normalizedBadgeId) {
-      return err('Signed message badge ID does not match query parameter', 401)
-    }
-
-    // ── 6. Verify message binds the expected tokenId ───────────────────────────
-    const msgTokenIdMatch = msgHeader.match(TOKEN_ID_LINE_RE)
-    const msgTokenId      = msgTokenIdMatch ? Number(msgTokenIdMatch[1]) : undefined
-    if (msgTokenId !== tokenId) {
-      return err('Signed message token ID does not match badge mapping', 401)
-    }
-
-    // ── 7. Timestamp freshness check ──────────────────────────────────────────
-    const tsMatch = msgHeader.match(TIMESTAMP_LINE_RE)
-    if (tsMatch) {
-      const signedTime = new Date(tsMatch[1].trim()).getTime()
-      if (isNaN(signedTime) || Date.now() - signedTime > BADGE_MINT_REQUEST_MAX_AGE_MS) {
-        return err('Mint request signature has expired — sign a fresh message', 401)
-      }
-    }
-
-    // ── 8. Cryptographic signature verification (ERC-6492 / smart-wallet safe) ─
-    const authResult = await verifyBaseWalletAuth(req, signerWallet, BADGE_MINT_REQUEST_ACTION)
-    if (!authResult.verified) {
-      return err('Invalid wallet signature', 401)
-    }
-
-    // ── 9. DB: resolve profile ────────────────────────────────────────────────
+    // ── 3. DB: resolve profile ────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
 
     const { data: profile, error: profileErr } = await supabase
@@ -176,7 +116,7 @@ export async function GET(req: NextRequest) {
       return err('No profile found for this wallet', 403)
     }
 
-    // ── 10. DB: check badge eligibility ──────────────────────────────────────
+    // ── 4. DB: check badge eligibility ────────────────────────────────────────
     const { data: userBadge, error: badgeErr } = await supabase
       .from('user_badges')
       .select('id, minted_onchain')
@@ -188,12 +128,9 @@ export async function GET(req: NextRequest) {
       console.error('[GET /api/badges/mint-signature] user_badges lookup:', badgeErr)
       return err('Failed to check badge eligibility', 500)
     }
-
     if (!userBadge) {
-      // Badge not earned — do not reveal whether the badge exists
       return err('Badge not earned — mint signature denied', 403)
     }
-
     if (userBadge.minted_onchain) {
       return NextResponse.json(
         { ok: false, error: 'Badge already minted on Base' },
@@ -201,13 +138,11 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // ── 11. Generate nonce ─────────────────────────────────────────────────────
+    // ── 5. Generate nonce ─────────────────────────────────────────────────────
     const nonce = generateMintNonce()
 
-    // ── 12. Insert nonce into badge_mint_nonces (used_at = null) ───────────────
-    // Insert before signing — if the DB write fails, no signature is issued.
-    // The nonce PRIMARY KEY prevents the same nonce from being double-inserted
-    // (astronomically unlikely with randomBytes(32), but guarded anyway).
+    // ── 6. Insert nonce into badge_mint_nonces (used_at = null) ───────────────
+    // Insert before signing — if DB fails, no signature is issued.
     const { error: nonceErr } = await supabase
       .from('badge_mint_nonces')
       .insert({
@@ -215,7 +150,6 @@ export async function GET(req: NextRequest) {
         wallet_address: signerWallet,
         badge_id:       normalizedBadgeId,
         token_id:       tokenId,
-        // used_at intentionally omitted — stays null until mint confirms
       })
 
     if (nonceErr) {
@@ -223,7 +157,7 @@ export async function GET(req: NextRequest) {
       return err('Failed to store mint nonce — please retry', 500)
     }
 
-    // ── 13. Sign EIP-712 MintBadge struct ─────────────────────────────────────
+    // ── 7. Sign EIP-712 MintBadge struct ──────────────────────────────────────
     let mintAuth: Awaited<ReturnType<typeof signMintAuthorization>>
     try {
       mintAuth = await signMintAuthorization(
@@ -232,13 +166,13 @@ export async function GET(req: NextRequest) {
         nonce,
       )
     } catch (sigErr) {
-      // Delete the nonce so the user can retry after the key is fixed
+      // Clean up the nonce so the user can retry once the key is fixed
       await supabase.from('badge_mint_nonces').delete().eq('nonce', nonce)
       console.error('[GET /api/badges/mint-signature] sign error:', sigErr)
       return err('Backend signer error — please contact support', 500)
     }
 
-    // ── 14. Return authorization ───────────────────────────────────────────────
+    // ── 8. Return authorization ───────────────────────────────────────────────
     const expiresAt = new Date(Date.now() + BADGE_MINT_REQUEST_MAX_AGE_MS).toISOString()
 
     return NextResponse.json({
@@ -251,6 +185,6 @@ export async function GET(req: NextRequest) {
     })
   } catch (error) {
     console.error('[GET /api/badges/mint-signature] unhandled:', error)
-    return err('Internal server error', 500)
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 })
   }
 }

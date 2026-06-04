@@ -20,17 +20,70 @@
  * This route is intentionally read-only for Phase A.
  */
 
-import { type NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient }        from '@/lib/supabase/server'
-import { verifyBaseWalletAuth }           from '@/lib/auth/verify-base-wallet'
-import {
-  BADGE_MINT_CONFIRM_ACTION,
-  BADGE_MINT_REQUEST_MAX_AGE_MS,
-}                                         from '@/lib/badge-mint-message'
+import { type NextRequest, NextResponse }  from 'next/server'
+import { createPublicClient, custom, decodeEventLog } from 'viem'
+import { base }                            from 'viem/chains'
+import { ProxyAgent, fetch as undiciF }    from 'undici'
+import { getServerSupabaseClient }         from '@/lib/supabase/server'
 import {
   getTokenIdForBadge,
   isActiveBadgeTokenId,
-}                                         from '@/lib/badges/tokenIds'
+}                                          from '@/lib/badges/tokenIds'
+import { PREDIXI_BADGE_CONTRACT }          from '@/lib/onchain/predixiBadges'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base public client — proxy-aware (same pattern as /api/predictions)
+// Used by PATCH handler to verify the mintBadge() transaction on-chain.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildBadgesClient() {
+  const proxyUrl =
+    process.env.HTTPS_PROXY ??
+    process.env.https_proxy ??
+    process.env.HTTP_PROXY  ??
+    process.env.http_proxy
+
+  const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const rpcFetch = dispatcher
+    ? (url: string, init?: RequestInit) =>
+        undiciF(url, { ...init, dispatcher } as Parameters<typeof undiciF>[1]) as unknown as Promise<Response>
+    : fetch
+
+  const rpcProvider = {
+    async request({ method, params }: { method: string; params?: unknown[] }) {
+      const res  = await rpcFetch('https://mainnet.base.org', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+      })
+      const json = await res.json() as {
+        result?: unknown
+        error?:  { code: number; message: string }
+      }
+      if (json.error) throw new Error(`RPC ${json.error.code}: ${json.error.message}`)
+      return json.result
+    },
+  }
+
+  return createPublicClient({ chain: base, transport: custom(rpcProvider) })
+}
+
+const badgesPublicClient = buildBadgesClient()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BadgeMinted event ABI — used to parse TX logs in PATCH handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BADGE_MINTED_ABI = [{
+  type:   'event' as const,
+  name:   'BadgeMinted',
+  inputs: [
+    { name: 'wallet',  type: 'address' as const, indexed: true  },
+    { name: 'tokenId', type: 'uint256' as const, indexed: true  },
+    { name: 'nonce',   type: 'bytes32' as const, indexed: false },
+  ],
+}] as const
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -44,15 +97,8 @@ function err(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status })
 }
 
-// Regex for PATCH validation — mirrors patterns in PATCH /api/predictions
-const TX_HASH_RE   = /^0x[0-9a-fA-F]{64}$/
-const BYTES32_RE   = /^0x[0-9a-fA-F]{64}$/
-const WALLET_LINE_RE    = /^Wallet: (0x[0-9a-fA-F]{40})$/im
-const BADGE_ID_LINE_RE  = /^Badge ID: (.+)$/im
-const TOKEN_ID_LINE_RE  = /^Token ID: (\d+)$/im
-const TX_HASH_LINE_RE   = /^Tx Hash: (0x[0-9a-fA-F]{64})$/im
-const NONCE_LINE_RE     = /^Nonce: (0x[0-9a-fA-F]{64})$/im
-const TIMESTAMP_LINE_RE = /^Timestamp: (.+)$/im
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/
+const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/badges?walletAddress=0x...
@@ -133,133 +179,62 @@ export async function GET(req: NextRequest) {
 // PATCH /api/badges
 //
 // Records that a badge NFT has been successfully minted on Base Mainnet.
-// Called by the frontend after mintBadge() TX confirms — no on-chain RPC
-// verification in Phase 5B (frontend uses wagmi's useWaitForTransactionReceipt
-// before calling this endpoint).
+// Called by the frontend after mintBadge() TX confirms on-chain.
 //
 // Request body:
-//   { badgeId: string, txHash: string, tokenId: number, nonce: string }
+//   { badgeId, tokenId, nonce, txHash, walletAddress }
 //
-// Request headers:
-//   x-wallet-message   — URL-encoded buildBadgeMintConfirmMessage() output
-//   x-wallet-signature — 0x-prefixed ECDSA signature from the wallet
+// No wallet message signature required.
+// Security is enforced by on-chain TX verification:
+//   • TX exists and succeeded on Base
+//   • A BadgeMinted event was emitted from the PrediXIBadges contract
+//   • Event wallet == walletAddress, tokenId == tokenId, nonce == nonce
 //
-// Security model:
-//   • Wallet extracted from signed message — never from body.
-//   • Signed message binds badgeId + tokenId + txHash + nonce so a confirm
-//     signature cannot be replayed across different badges, transactions, or
-//     nonces.
-//   • Nonce ownership is verified: badge_mint_nonces row must exist with the
-//     matching nonce + wallet + badge + token, and used_at must be null.
-//   • Idempotent: same txHash already stored → 200, different txHash → 409.
-//   • No XP awarded here — XP is issued at badge earn time, not mint time.
+// Since only walletAddress could have sent the TX (EIP-712 binding in the
+// contract enforces msg.sender == wallet), verifying the on-chain event
+// is sufficient to prove ownership.
 //
-// DB writes (only on first successful call):
-//   user_badges:       minted_onchain=true, minted_at, onchain_tx_hash,
-//                      token_id, chain_id
-//   badge_mint_nonces: used_at=now()
+// No XP awarded here — XP is issued at badge earn time, not mint time.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function PATCH(req: NextRequest) {
   try {
-    // ── 1. Parse and validate request body ────────────────────────────────────
+    // ── 1. Parse and validate body ────────────────────────────────────────────
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== 'object') return err('Invalid JSON body', 400)
 
-    const { badgeId, txHash, tokenId, nonce } = body as Record<string, unknown>
+    const { badgeId, txHash, tokenId, nonce, walletAddress } = body as Record<string, unknown>
+
+    if (!walletAddress || typeof walletAddress !== 'string' || !isValidAddress(walletAddress)) {
+      return err('walletAddress must be a valid 0x Ethereum address', 400)
+    }
+    const signerWallet = (walletAddress as string).trim().toLowerCase()
 
     if (!badgeId || typeof badgeId !== 'string' || !badgeId.trim()) {
       return err('badgeId is required', 400)
     }
-    const normalizedBadgeId = badgeId.trim().toLowerCase()
+    const normalizedBadgeId = (badgeId as string).trim().toLowerCase()
 
-    // Resolve and validate token ID from mapping
     const expectedTokenId = getTokenIdForBadge(normalizedBadgeId)
     if (expectedTokenId === undefined || !isActiveBadgeTokenId(expectedTokenId)) {
       return err(`badgeId '${normalizedBadgeId}' is not a valid active badge`, 400)
     }
-
-    // body tokenId must match the canonical mapping
     const parsedTokenId = Number(tokenId)
     if (!Number.isInteger(parsedTokenId) || parsedTokenId !== expectedTokenId) {
-      return err(
-        `tokenId ${parsedTokenId} does not match badge mapping for '${normalizedBadgeId}'`,
-        400,
-      )
+      return err(`tokenId ${parsedTokenId} does not match badge mapping for '${normalizedBadgeId}'`, 400)
     }
 
-    if (!txHash || typeof txHash !== 'string' || !TX_HASH_RE.test(txHash)) {
+    if (!txHash || typeof txHash !== 'string' || !TX_HASH_RE.test(txHash as string)) {
       return err('txHash must be a 0x-prefixed 64-hex transaction hash', 400)
     }
-    const normalizedTxHash = txHash.toLowerCase()
+    const normalizedTxHash = (txHash as string).toLowerCase()
 
-    if (!nonce || typeof nonce !== 'string' || !BYTES32_RE.test(nonce)) {
+    if (!nonce || typeof nonce !== 'string' || !BYTES32_RE.test(nonce as string)) {
       return err('nonce must be a 0x-prefixed bytes32 hex string', 400)
     }
-    const normalizedNonce = nonce.toLowerCase()
+    const normalizedNonce = (nonce as string).toLowerCase()
 
-    // ── 2. Decode and validate signed message ─────────────────────────────────
-    const rawMsgHeader = req.headers.get('x-wallet-message')
-    const sigHeader    = req.headers.get('x-wallet-signature')
-
-    if (!rawMsgHeader || !sigHeader) {
-      return err('x-wallet-message and x-wallet-signature headers are required', 401)
-    }
-
-    let msgHeader: string
-    try {
-      msgHeader = decodeURIComponent(rawMsgHeader)
-    } catch {
-      return err('x-wallet-message could not be URL-decoded', 401)
-    }
-
-    // ── 3. Extract wallet from message (never from body) ──────────────────────
-    const walletMatch = msgHeader.match(WALLET_LINE_RE)
-    if (!walletMatch) return err('Wallet address not found in signed message', 401)
-    const signerWallet = walletMatch[1].toLowerCase()
-
-    // ── 4. Verify action string ────────────────────────────────────────────────
-    if (!msgHeader.includes(`Action: ${BADGE_MINT_CONFIRM_ACTION}`)) {
-      return err('Signed message action mismatch', 401)
-    }
-
-    // ── 5. Verify message binds body values (anti-replay) ─────────────────────
-    const msgBadgeId = msgHeader.match(BADGE_ID_LINE_RE)?.[1]?.trim().toLowerCase()
-    if (msgBadgeId !== normalizedBadgeId) {
-      return err('Signed message badge ID does not match body', 401)
-    }
-
-    const msgTokenId = msgHeader.match(TOKEN_ID_LINE_RE)?.[1]
-    if (Number(msgTokenId) !== parsedTokenId) {
-      return err('Signed message token ID does not match body', 401)
-    }
-
-    const msgTxHash = msgHeader.match(TX_HASH_LINE_RE)?.[1]?.toLowerCase()
-    if (msgTxHash !== normalizedTxHash) {
-      return err('Signed message tx hash does not match body', 401)
-    }
-
-    const msgNonce = msgHeader.match(NONCE_LINE_RE)?.[1]?.toLowerCase()
-    if (msgNonce !== normalizedNonce) {
-      return err('Signed message nonce does not match body', 401)
-    }
-
-    // ── 6. Timestamp freshness ─────────────────────────────────────────────────
-    const tsMatch = msgHeader.match(TIMESTAMP_LINE_RE)
-    if (tsMatch) {
-      const signedTime = new Date(tsMatch[1].trim()).getTime()
-      if (isNaN(signedTime) || Date.now() - signedTime > BADGE_MINT_REQUEST_MAX_AGE_MS) {
-        return err('Mint confirm signature has expired — sign a fresh message', 401)
-      }
-    }
-
-    // ── 7. Cryptographic signature verification (ERC-6492 / smart-wallet safe) ─
-    const authResult = await verifyBaseWalletAuth(req, signerWallet, BADGE_MINT_CONFIRM_ACTION)
-    if (!authResult.verified) {
-      return err('Invalid wallet signature', 401)
-    }
-
-    // ── 8. DB: resolve profile ────────────────────────────────────────────────
+    // ── 2. DB: resolve profile ────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
 
     const { data: profile, error: profileErr } = await supabase
@@ -274,7 +249,7 @@ export async function PATCH(req: NextRequest) {
     }
     if (!profile) return err('No profile found for this wallet', 403)
 
-    // ── 9. DB: check badge row and ownership ──────────────────────────────────
+    // ── 3. DB: check badge row ────────────────────────────────────────────────
     const { data: userBadge, error: badgeErr } = await supabase
       .from('user_badges')
       .select('id, minted_onchain, onchain_tx_hash')
@@ -286,30 +261,23 @@ export async function PATCH(req: NextRequest) {
       console.error('[PATCH /api/badges] user_badges lookup:', badgeErr)
       return err('Failed to check badge eligibility', 500)
     }
-    if (!userBadge) {
-      return err('Badge not earned by this wallet', 403)
-    }
+    if (!userBadge) return err('Badge not earned by this wallet', 403)
 
-    // ── 10. Idempotency ────────────────────────────────────────────────────────
+    // ── 4. Idempotency ─────────────────────────────────────────────────────────
     if (userBadge.minted_onchain) {
       if (userBadge.onchain_tx_hash === normalizedTxHash) {
-        // Same tx already recorded — safe retry
         return NextResponse.json({
-          ok:           true,
-          badgeId:      normalizedBadgeId,
-          tokenId:      parsedTokenId,
-          mintedOnchain: true,
-          txHash:       normalizedTxHash,
+          ok: true, badgeId: normalizedBadgeId, tokenId: parsedTokenId,
+          mintedOnchain: true, txHash: normalizedTxHash,
         })
       }
-      // Already minted with a different tx — refuse to overwrite
       return NextResponse.json(
         { ok: false, error: 'Badge already minted on Base with a different transaction' },
         { status: 409 },
       )
     }
 
-    // ── 11. Verify nonce ownership and availability ───────────────────────────
+    // ── 5. Verify nonce ownership ─────────────────────────────────────────────
     const { data: nonceRow, error: nonceErr } = await supabase
       .from('badge_mint_nonces')
       .select('nonce, wallet_address, badge_id, token_id, used_at')
@@ -320,23 +288,69 @@ export async function PATCH(req: NextRequest) {
       console.error('[PATCH /api/badges] nonce lookup:', nonceErr)
       return err('Failed to verify nonce', 500)
     }
-    if (!nonceRow) {
-      return err('Nonce not found — was not issued by this server', 401)
-    }
-    if (nonceRow.wallet_address !== signerWallet) {
-      return err('Nonce was issued to a different wallet', 401)
-    }
-    if (nonceRow.badge_id !== normalizedBadgeId) {
-      return err('Nonce was issued for a different badge', 401)
-    }
-    if (nonceRow.token_id !== parsedTokenId) {
-      return err('Nonce was issued for a different token ID', 401)
-    }
-    if (nonceRow.used_at !== null) {
-      return err('Nonce has already been consumed', 401)
+    if (!nonceRow)                               return err('Nonce not found — not issued by this server', 400)
+    if (nonceRow.wallet_address !== signerWallet) return err('Nonce was issued to a different wallet', 400)
+    if (nonceRow.badge_id       !== normalizedBadgeId) return err('Nonce was issued for a different badge', 400)
+    if (nonceRow.token_id       !== parsedTokenId)    return err('Nonce was issued for a different token ID', 400)
+    if (nonceRow.used_at        !== null)              return err('Nonce has already been consumed', 400)
+
+    // ── 6. On-chain TX verification ───────────────────────────────────────────
+    // Get the transaction receipt from Base Mainnet and parse the BadgeMinted
+    // event to confirm the mint actually happened with the claimed args.
+    let receipt: Awaited<ReturnType<typeof badgesPublicClient.getTransactionReceipt>>
+    try {
+      receipt = await badgesPublicClient.getTransactionReceipt({
+        hash: normalizedTxHash as `0x${string}`,
+      })
+    } catch (rpcErr) {
+      console.error('[PATCH /api/badges] receipt fetch:', rpcErr)
+      return err('Could not fetch transaction receipt from Base — please retry', 500)
     }
 
-    // ── 12. Persist mint state ─────────────────────────────────────────────────
+    if (receipt.status !== 'success') {
+      return err('Transaction reverted on Base — mint did not succeed', 400)
+    }
+
+    // Find the BadgeMinted log from the PrediXIBadges contract
+    const contractAddr = (PREDIXI_BADGE_CONTRACT ?? '').toLowerCase()
+    const badgeLogs = receipt.logs.filter(
+      log => log.address.toLowerCase() === contractAddr,
+    )
+
+    let mintLog: { wallet: string; tokenId: bigint; nonce: string } | null = null
+    for (const log of badgeLogs) {
+      try {
+        const decoded = decodeEventLog({
+          abi:       BADGE_MINTED_ABI,
+          data:      log.data,
+          topics:    log.topics,
+          eventName: 'BadgeMinted',
+        })
+        mintLog = {
+          wallet:  (decoded.args.wallet as string).toLowerCase(),
+          tokenId: decoded.args.tokenId as bigint,
+          nonce:   (decoded.args.nonce  as string).toLowerCase(),
+        }
+        break
+      } catch {
+        // Not a BadgeMinted log — skip
+      }
+    }
+
+    if (!mintLog) {
+      return err('Transaction did not emit a BadgeMinted event from the PrediXIBadges contract', 400)
+    }
+    if (mintLog.wallet !== signerWallet) {
+      return err('On-chain event wallet does not match walletAddress', 400)
+    }
+    if (Number(mintLog.tokenId) !== parsedTokenId) {
+      return err('On-chain event token ID does not match request', 400)
+    }
+    if (mintLog.nonce !== normalizedNonce) {
+      return err('On-chain event nonce does not match request', 400)
+    }
+
+    // ── 7. Persist mint state ─────────────────────────────────────────────────
     const now = new Date().toISOString()
 
     const { error: updateBadgeErr } = await supabase
@@ -355,29 +369,25 @@ export async function PATCH(req: NextRequest) {
       return err('Failed to record mint state', 500)
     }
 
-    // ── 13. Mark nonce as consumed ────────────────────────────────────────────
+    // ── 8. Mark nonce consumed ────────────────────────────────────────────────
     const { error: updateNonceErr } = await supabase
       .from('badge_mint_nonces')
       .update({ used_at: now })
       .eq('nonce', normalizedNonce)
 
     if (updateNonceErr) {
-      // Non-fatal: user_badges was already updated. Log and continue — the
-      // nonce is effectively spent (the on-chain contract already used it).
+      // Non-fatal — contract's usedNonces mapping is the authoritative guard.
       console.error('[PATCH /api/badges] nonce used_at update:', updateNonceErr)
     }
 
     console.log(
-      `[PATCH /api/badges] minted badge '${normalizedBadgeId}' (token ${parsedTokenId})` +
-      ` for ${signerWallet} — tx ${normalizedTxHash}`,
+      `[PATCH /api/badges] minted '${normalizedBadgeId}' (token ${parsedTokenId})` +
+      ` wallet=${signerWallet} tx=${normalizedTxHash}`,
     )
 
     return NextResponse.json({
-      ok:            true,
-      badgeId:       normalizedBadgeId,
-      tokenId:       parsedTokenId,
-      mintedOnchain: true,
-      txHash:        normalizedTxHash,
+      ok: true, badgeId: normalizedBadgeId, tokenId: parsedTokenId,
+      mintedOnchain: true, txHash: normalizedTxHash,
     })
   } catch (error) {
     console.error('[PATCH /api/badges] unhandled:', error)

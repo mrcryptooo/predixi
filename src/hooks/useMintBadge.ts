@@ -1,33 +1,22 @@
 'use client'
 
 /**
- * useMintBadge — orchestrates the full badge NFT mint flow.
+ * useMintBadge — orchestrates the simplified one-transaction badge NFT mint.
  *
- * Six async steps, three wallet interactions:
+ * Flow (one wallet interaction only):
+ *   1. GET /api/badges/mint-signature?badgeId=...&walletAddress=... → EIP-712 sig
+ *   2. mintBadge(tokenId, nonce, signature) → wallet prompts for TX fee only
+ *   3. Wait for Base receipt
+ *   4. PATCH /api/badges { badgeId, tokenId, nonce, txHash, walletAddress }
+ *      → server verifies on-chain BadgeMinted event → persists minted_onchain=true
  *
- *   Step 1  sign-request    wallet signs request message (EIP-191)
- *   Step 2  request-sig     GET /api/badges/mint-signature → tokenId, nonce, EIP-712 sig
- *   Step 3  mint-pending    wallet signs + broadcasts mintBadge() TX
- *   Step 4  mint-confirming waits for Base Mainnet receipt
- *   Step 5  sign-confirm    wallet signs confirm message (EIP-191)
- *   Step 6  persisting      PATCH /api/badges → minted_onchain=true in DB
+ * Duplicate-TX protection:
+ *   Once cachedTxHashRef is set (TX confirmed), mintBadge() retries skip
+ *   writeContract and go straight to the PATCH call with cached data.
  *
- * Duplicate-TX protection
- * ────────────────────────
- *   Once mintTxHash is set it is cached in `cachedTxHashRef` and `pendingRef`
- *   is populated with the badge/token/nonce data.  On any subsequent call to
- *   mintBadge() for the same badgeId, the hook detects cachedTxHashRef and
- *   jumps directly to step 5 (sign-confirm + PATCH) — writeContract is never
- *   called a second time.
- *
- *   `confirmSignTriggeredRef` prevents the auto-sign useEffect from firing
- *   more than once per TX confirmation (mirrors AnchorPredictionButton's
- *   signTriggeredRef pattern).
- *
- *   `patchSentRef` prevents duplicate PATCH calls if the signature effect
- *   re-fires during a re-render.
- *
- * No UI is rendered here — consume this hook in MintBadgeButton (Phase 6B).
+ * No wallet message signatures required — the contract's EIP-712 binding
+ * ensures only the intended wallet can send the TX; the server verifies the
+ * on-chain event as the security gate.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -36,23 +25,15 @@ import {
   useChainId,
   useWriteContract,
   useWaitForTransactionReceipt,
-  useSignMessage,
-}                                         from 'wagmi'
+} from 'wagmi'
 import {
   PREDIXI_BADGE_CONTRACT,
   PREDIXI_BASE_CHAIN_ID,
   PREDIXI_BADGES_ABI,
   validateBadgeContractConfig,
   isBytes32Nonce,
-}                                         from '@/lib/onchain/predixiBadges'
-import {
-  buildBadgeMintRequestMessage,
-  buildBadgeMintConfirmMessage,
-}                                         from '@/lib/badge-mint-message'
-import {
-  getTokenIdForBadge,
-  isActiveBadgeTokenId,
-}                                         from '@/lib/badges/tokenIds'
+} from '@/lib/onchain/predixiBadges'
+import { getTokenIdForBadge, isActiveBadgeTokenId } from '@/lib/badges/tokenIds'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -60,38 +41,29 @@ import {
 
 type MintPhase =
   | 'idle'
-  | 'signing-request'      // wallet prompted for request message signature (step 1)
-  | 'requesting-signature' // GET /api/badges/mint-signature in flight (step 2)
-  | 'mint-pending'         // writeContract in flight — wallet TX prompt (step 3)
-  | 'mint-confirming'      // TX broadcast, waiting for Base receipt (step 4)
-  | 'signing-confirm'      // wallet prompted for confirm message signature (step 5)
-  | 'persisting'           // PATCH /api/badges in flight (step 6)
-  | 'minted'               // success — badge is Owned on Base
+  | 'requesting-signature'  // GET /api/badges/mint-signature in flight
+  | 'mint-pending'          // writeContract in flight — wallet TX prompt
+  | 'mint-confirming'       // TX broadcast, waiting for receipt
+  | 'persisting'            // PATCH /api/badges in flight
+  | 'minted'                // success — badge is Owned on Base
 
-/** Data cached between the six async steps. Survives re-renders. */
 type PendingMintData = {
   badgeId:     string
   tokenId:     number
   nonce:       `0x${string}`
-  contractSig: `0x${string}`  // EIP-712 sig from GET /api/badges/mint-signature
+  contractSig: `0x${string}`   // EIP-712 sig from GET mint-signature
 }
 
 export interface UseMintBadgeResult {
-  /** Initiate a mint. Idempotent on retry: re-uses cached TX hash if already confirmed. */
-  mintBadge:             (badgeId: string) => void
-  isSigningRequest:      boolean  // step 1
-  isRequestingSignature: boolean  // step 2
-  isMintPending:         boolean  // step 3
-  isMintConfirming:      boolean  // step 4
-  isSigningConfirm:      boolean  // step 5
-  isPersisting:          boolean  // step 6
-  isMinted:              boolean  // success
-  /** Confirmed TX hash — set once step 4 completes; survives reset() for retry. */
-  txHash:                `0x${string}` | undefined
-  /** Human-readable error, or null if no error. */
-  error:                 string | null
-  /** Reset all state. Clears cached data including txHash. */
-  reset:                 () => void
+  mintBadge:              (badgeId: string) => void
+  isRequestingSignature:  boolean
+  isMintPending:          boolean
+  isMintConfirming:       boolean
+  isPersisting:           boolean
+  isMinted:               boolean
+  txHash:                 `0x${string}` | undefined
+  error:                  string | null
+  reset:                  () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,57 +71,32 @@ export interface UseMintBadgeResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function useMintBadge(): UseMintBadgeResult {
-  const chainId               = useChainId()
+  const chainId                  = useChainId()
   const { address, isConnected } = useAccount()
 
-  // ── Phase — dual ref+state prevents stale closures in async callbacks ───────
+  // ── Phase state — phaseRef prevents stale closures in async callbacks ───────
   const phaseRef = useRef<MintPhase>('idle')
   const [phase, setPhaseState] = useState<MintPhase>('idle')
 
-  function setPhase(p: MintPhase) {
+  const setPhase = (p: MintPhase) => {
     phaseRef.current = p
     setPhaseState(p)
   }
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // ── Refs — survive re-renders; safe to read inside async callbacks ──────────
+  // ── Refs — survive re-renders, safe in async/effect callbacks ───────────────
+  const pendingRef         = useRef<PendingMintData | null>(null)
+  const cachedTxHashRef    = useRef<`0x${string}` | undefined>(undefined)
+  const patchCalledRef     = useRef(false)   // prevents duplicate PATCH calls
+  const abortedRef         = useRef(false)   // signals reset() was called mid-flight
 
-  /** Cached step data — populated after GET mint-signature succeeds. */
-  const pendingRef = useRef<PendingMintData | null>(null)
-
-  /**
-   * TX hash cached once the chain confirms.
-   * Survives reset() so retry skips writeContract and goes straight to PATCH.
-   */
-  const cachedTxHashRef = useRef<`0x${string}` | undefined>(undefined)
-
-  /**
-   * Prevents the confirm-sign useEffect from firing more than once per TX
-   * confirmation (mirrors AnchorPredictionButton's signTriggeredRef pattern).
-   */
-  const confirmSignTriggeredRef = useRef(false)
-
-  /** Prevents duplicate PATCH calls when the signature effect re-fires. */
-  const patchSentRef = useRef(false)
-
-  /**
-   * Set to true inside reset() and cleared at the start of each fresh attempt.
-   * Guards async callbacks against acting on stale results after the user
-   * resets mid-flow — avoids comparing phaseRef.current against 'idle' inside
-   * closures where TypeScript narrows the ref type based on prior assignments.
-   */
-  const abortedRef = useRef(false)
-
-  // ── Wagmi hooks ─────────────────────────────────────────────────────────────
-
-  const { mutate: signMsg, reset: resetSign } = useSignMessage()
-
+  // ── Wagmi hooks ──────────────────────────────────────────────────────────────
   const {
-    mutate:    writeContract,
-    data:      mintTxHash,
-    error:     writeError,
-    reset:     resetWrite,
+    mutate: writeContract,
+    data:   mintTxHash,
+    error:  writeError,
+    reset:  resetWrite,
   } = useWriteContract()
 
   const {
@@ -157,293 +104,184 @@ export function useMintBadge(): UseMintBadgeResult {
     error:     receiptError,
   } = useWaitForTransactionReceipt({ hash: mintTxHash })
 
-  // ── Sync: mintTxHash → mint-confirming ─────────────────────────────────────
+  // ── Sync TX broadcast → confirming phase ─────────────────────────────────────
   useEffect(() => {
     if (mintTxHash && phaseRef.current === 'mint-pending') {
-      cachedTxHashRef.current = mintTxHash
       setPhase('mint-confirming')
+      cachedTxHashRef.current = mintTxHash
     }
   }, [mintTxHash])
 
-  // ── Surface write / receipt errors ─────────────────────────────────────────
+  // ── Surface write / receipt errors ───────────────────────────────────────────
   useEffect(() => {
-    if (!writeError) return
+    if (!writeError || abortedRef.current) return
     const raw = writeError as { shortMessage?: string; message?: string }
     setErrorMsg(raw.shortMessage ?? raw.message ?? 'Transaction failed')
     setPhase('idle')
   }, [writeError])
 
   useEffect(() => {
-    if (!receiptError) return
+    if (!receiptError || abortedRef.current) return
     const raw = receiptError as { shortMessage?: string; message?: string }
     setErrorMsg(raw.shortMessage ?? raw.message ?? 'Failed to confirm transaction')
     setPhase('idle')
   }, [receiptError])
 
-  // ── PATCH helper — extracted so both auto-trigger and retry can call it ─────
-  const callPatchBadge = useCallback(async (opts: {
-    badgeId:    string
-    tokenId:    number
-    nonce:      `0x${string}`
-    txHash:     `0x${string}`
-    confirmMsg: string
-    confirmSig: `0x${string}`
-  }) => {
-    if (patchSentRef.current) return
-    patchSentRef.current = true
+  // ── PATCH helper ──────────────────────────────────────────────────────────────
+  const callPatch = useCallback(async (
+    badgeId:       string,
+    tokenId:       number,
+    nonce:         `0x${string}`,
+    txHash:        `0x${string}`,
+    walletAddress: string,
+  ) => {
+    if (abortedRef.current) return
     setPhase('persisting')
-
-    const { badgeId, tokenId, nonce, txHash, confirmMsg, confirmSig } = opts
 
     try {
       const res = await fetch('/api/badges', {
         method:  'PATCH',
-        headers: {
-          'Content-Type':       'application/json',
-          'x-wallet-message':   encodeURIComponent(confirmMsg),
-          'x-wallet-signature': confirmSig,
-        },
-        body: JSON.stringify({ badgeId, tokenId, nonce, txHash }),
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ badgeId, tokenId, nonce, txHash, walletAddress }),
       })
-
       const data = await res.json() as { ok: boolean; error?: string }
 
-      // 409 = already minted with same tx (idempotent retry) — treat as success
       if (!res.ok && res.status !== 409) {
-        throw new Error(data.error ?? `PATCH ${res.status}`)
+        throw new Error(data.error ?? `HTTP ${res.status}`)
       }
-
-      setPhase('minted')
+      if (!abortedRef.current) setPhase('minted')
     } catch (err) {
+      if (abortedRef.current) return
       const msg = err instanceof Error ? err.message : 'Failed to persist mint'
       console.warn('[useMintBadge] PATCH error:', msg)
       setErrorMsg(msg)
       setPhase('idle')
-      patchSentRef.current = false  // allow PATCH retry without a new TX
+      patchCalledRef.current = false  // allow retry
     }
   }, [])
 
-  // ── Auto-trigger sign-confirm once TX confirms ──────────────────────────────
-  // Deps: only the values needed to decide whether to sign.
-  // confirmSignTriggeredRef prevents double-fire during the render gap between
-  // calling signMsg() and wagmi flushing state updates.
+  // ── Auto-call PATCH once TX confirms ──────────────────────────────────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!isTxConfirmed || !mintTxHash || !address) return
-    if (!pendingRef.current) return
-    if (confirmSignTriggeredRef.current) return
-    if (patchSentRef.current) return
+    if (!isTxConfirmed || !mintTxHash)                return
+    if (phaseRef.current !== 'mint-confirming')       return
+    if (patchCalledRef.current || abortedRef.current) return
+    if (!pendingRef.current || !address)              return
 
-    confirmSignTriggeredRef.current = true
-    setPhase('signing-confirm')
-
+    patchCalledRef.current = true
     const { badgeId, tokenId, nonce } = pendingRef.current
-    const txHash = mintTxHash
+    callPatch(badgeId, tokenId, nonce, mintTxHash, address)
+  }, [isTxConfirmed, mintTxHash, address]) // callPatch is stable
 
-    const confirmMsg = buildBadgeMintConfirmMessage({
-      walletAddress: address,
-      badgeId,
-      tokenId,
-      txHash,
-      nonce,
-      signedAt: new Date().toISOString(),
-    })
-
-    // Brief delay before reprompting — lets wallet clear the TX confirmation
-    // screen before presenting the sign request (prevents accidental dismissal).
-    const t = setTimeout(() => {
-      signMsg(
-        { message: confirmMsg },
-        {
-          onSuccess: (confirmSig) => {
-            callPatchBadge({ badgeId, tokenId, nonce, txHash, confirmMsg, confirmSig })
-          },
-          onError: (err) => {
-            const raw = err as { shortMessage?: string; message?: string }
-            setErrorMsg(raw.shortMessage ?? raw.message ?? 'Signature rejected')
-            setPhase('idle')
-            confirmSignTriggeredRef.current = false  // allow sign-confirm retry
-          },
-        },
-      )
-    }, 60)
-
-    return () => clearTimeout(t)
-  }, [isTxConfirmed, mintTxHash, address])  // callPatchBadge and signMsg are stable
-
-  // ── Main action ─────────────────────────────────────────────────────────────
+  // ── Main mint action ──────────────────────────────────────────────────────────
   const mintBadge = useCallback((badgeId: string) => {
+    if (!address) { setErrorMsg('Wallet not connected'); return }
 
-    // ── Retry path: TX confirmed but PATCH failed ────────────────────────────
-    // Skip steps 1–4. Re-sign the confirm message and call PATCH again.
-    // writeContract is NEVER called a second time once cachedTxHashRef is set.
+    // ── Retry path: TX confirmed but PATCH failed ─────────────────────────────
     const cachedTxHash = cachedTxHashRef.current
     if (cachedTxHash && pendingRef.current?.badgeId === badgeId) {
-      if (!address) { setErrorMsg('Wallet disconnected'); return }
-
       const { tokenId, nonce } = pendingRef.current
       setErrorMsg(null)
-      patchSentRef.current            = false
-      confirmSignTriggeredRef.current = false
-      setPhase('signing-confirm')
-
-      const confirmMsg = buildBadgeMintConfirmMessage({
-        walletAddress: address,
-        badgeId,
-        tokenId,
-        txHash:   cachedTxHash,
-        nonce,
-        signedAt: new Date().toISOString(),
-      })
-
-      signMsg(
-        { message: confirmMsg },
-        {
-          onSuccess: (confirmSig) => {
-            callPatchBadge({ badgeId, tokenId, nonce, txHash: cachedTxHash, confirmMsg, confirmSig })
-          },
-          onError: (err) => {
-            const raw = err as { shortMessage?: string; message?: string }
-            setErrorMsg(raw.shortMessage ?? raw.message ?? 'Signature rejected')
-            setPhase('idle')
-          },
-        },
-      )
+      patchCalledRef.current = false
+      abortedRef.current     = false
+      callPatch(badgeId, tokenId, nonce, cachedTxHash, address)
       return
     }
 
-    // ── Fresh flow — steps 1–6 ───────────────────────────────────────────────
+    // ── Fresh flow ────────────────────────────────────────────────────────────
     const configCheck = validateBadgeContractConfig()
     if (!configCheck.ok) { setErrorMsg(configCheck.error); return }
-    if (!isConnected || !address) { setErrorMsg('Wallet not connected'); return }
+    if (!isConnected)    { setErrorMsg('Wallet not connected'); return }
     if (chainId !== PREDIXI_BASE_CHAIN_ID) {
-      setErrorMsg('Please switch to Base Mainnet to mint')
+      setErrorMsg('Please switch to Base Mainnet')
       return
     }
-
     const tokenId = getTokenIdForBadge(badgeId)
     if (tokenId === undefined || !isActiveBadgeTokenId(tokenId)) {
-      setErrorMsg(`Unknown or reserved badge: ${badgeId}`)
+      setErrorMsg(`Unknown badge: ${badgeId}`)
       return
     }
 
-    // Clear all state for a fresh attempt
-    abortedRef.current              = false
-    pendingRef.current              = null
-    cachedTxHashRef.current         = undefined
-    confirmSignTriggeredRef.current = false
-    patchSentRef.current            = false
+    // Reset all state for a fresh attempt
+    pendingRef.current      = null
+    cachedTxHashRef.current = undefined
+    patchCalledRef.current  = false
+    abortedRef.current      = false
     setErrorMsg(null)
     resetWrite()
-    resetSign()
-    setPhase('signing-request')
+    setPhase('requesting-signature')
 
-    const requestMsg = buildBadgeMintRequestMessage({
-      walletAddress: address,
-      badgeId,
-      tokenId,
-      signedAt: new Date().toISOString(),
-    })
-
-    signMsg(
-      { message: requestMsg },
-      {
-        onSuccess: async (requestSig) => {
-          // Guard: abort if reset() was called while this was in-flight
-          if (abortedRef.current) return
-
-          setPhase('requesting-signature')
-
-          try {
-            const res = await fetch(
-              `/api/badges/mint-signature?badgeId=${encodeURIComponent(badgeId)}`,
-              {
-                headers: {
-                  'x-wallet-message':   encodeURIComponent(requestMsg),
-                  'x-wallet-signature': requestSig,
-                },
-              },
-            )
-
-            const apiData = await res.json() as {
-              ok:         boolean
-              tokenId?:   number
-              nonce?:     string
-              signature?: string
-              error?:     string
-            }
-
-            if (!res.ok || !apiData.ok) {
-              throw new Error(apiData.error ?? `API error ${res.status}`)
-            }
-            if (!apiData.tokenId || !apiData.nonce || !apiData.signature) {
-              throw new Error('Incomplete response from mint-signature endpoint')
-            }
-            if (!isBytes32Nonce(apiData.nonce)) {
-              throw new Error('Invalid nonce format in server response')
-            }
-
-            if (abortedRef.current) return  // reset() called
-
-            // Cache — survives re-renders; protects writeContract from being
-            // called a second time if mintBadge() is invoked after TX confirms.
-            pendingRef.current = {
-              badgeId,
-              tokenId:     apiData.tokenId,
-              nonce:       apiData.nonce      as `0x${string}`,
-              contractSig: apiData.signature  as `0x${string}`,
-            }
-
-            setPhase('mint-pending')
-
-            writeContract({
-              address:      PREDIXI_BADGE_CONTRACT!,
-              abi:          PREDIXI_BADGES_ABI,
-              functionName: 'mintBadge',
-              args: [
-                BigInt(apiData.tokenId),
-                apiData.nonce     as `0x${string}`,
-                apiData.signature as `0x${string}`,
-              ],
-              chainId: PREDIXI_BASE_CHAIN_ID as 8453,
-            })
-          } catch (err) {
-            if (abortedRef.current) return
-            const msg = err instanceof Error ? err.message : 'Failed to get mint signature'
-            setErrorMsg(msg)
-            setPhase('idle')
-          }
-        },
-        onError: (err) => {
-          if (abortedRef.current) return
-          const raw = err as { shortMessage?: string; message?: string }
-          setErrorMsg(raw.shortMessage ?? raw.message ?? 'Signature rejected')
-          setPhase('idle')
-        },
-      },
+    // ── Step 1: GET /api/badges/mint-signature ────────────────────────────────
+    fetch(
+      `/api/badges/mint-signature?badgeId=${encodeURIComponent(badgeId)}&walletAddress=${encodeURIComponent(address)}`,
     )
-  }, [address, isConnected, chainId, signMsg, writeContract, resetWrite, resetSign, callPatchBadge])
+      .then(async (res) => {
+        if (abortedRef.current) return
 
-  // ── Reset ────────────────────────────────────────────────────────────────────
+        const apiData = await res.json() as {
+          ok:         boolean
+          tokenId?:   number
+          nonce?:     string
+          signature?: string
+          error?:     string
+        }
+
+        if (!res.ok || !apiData.ok) throw new Error(apiData.error ?? `API error ${res.status}`)
+        if (!apiData.tokenId || !apiData.nonce || !apiData.signature)
+          throw new Error('Incomplete response from mint-signature endpoint')
+        if (!isBytes32Nonce(apiData.nonce))
+          throw new Error('Invalid nonce in server response')
+        if (abortedRef.current) return
+
+        // Cache data — survives re-renders; guards against duplicate writeContract
+        pendingRef.current = {
+          badgeId,
+          tokenId:     apiData.tokenId,
+          nonce:       apiData.nonce     as `0x${string}`,
+          contractSig: apiData.signature as `0x${string}`,
+        }
+
+        setPhase('mint-pending')
+
+        // ── Step 2: mintBadge() TX (the only wallet interaction) ──────────────
+        writeContract({
+          address:      PREDIXI_BADGE_CONTRACT!,
+          abi:          PREDIXI_BADGES_ABI,
+          functionName: 'mintBadge',
+          args: [
+            BigInt(apiData.tokenId),
+            apiData.nonce     as `0x${string}`,
+            apiData.signature as `0x${string}`,
+          ],
+          chainId: PREDIXI_BASE_CHAIN_ID as 8453,
+        })
+      })
+      .catch((err: unknown) => {
+        if (abortedRef.current) return
+        const msg = err instanceof Error ? err.message : 'Failed to get mint signature'
+        setErrorMsg(msg)
+        setPhase('idle')
+      })
+  }, [address, isConnected, chainId, writeContract, resetWrite, callPatch])
+
+  // ── Reset ─────────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
-    abortedRef.current              = true   // cancels any in-flight async callbacks
+    abortedRef.current      = true   // signal any in-flight async to abort
     setPhase('idle')
     setErrorMsg(null)
-    pendingRef.current              = null
-    cachedTxHashRef.current         = undefined
-    confirmSignTriggeredRef.current = false
-    patchSentRef.current            = false
+    pendingRef.current      = null
+    cachedTxHashRef.current = undefined
+    patchCalledRef.current  = false
     resetWrite()
-    resetSign()
-  }, [resetWrite, resetSign])
+    // Re-arm after a tick so subsequent calls are not treated as aborted
+    setTimeout(() => { abortedRef.current = false }, 0)
+  }, [resetWrite])
 
   return {
     mintBadge,
-    isSigningRequest:      phase === 'signing-request',
     isRequestingSignature: phase === 'requesting-signature',
     isMintPending:         phase === 'mint-pending',
     isMintConfirming:      phase === 'mint-confirming',
-    isSigningConfirm:      phase === 'signing-confirm',
     isPersisting:          phase === 'persisting',
     isMinted:              phase === 'minted',
     txHash:                mintTxHash ?? cachedTxHashRef.current,

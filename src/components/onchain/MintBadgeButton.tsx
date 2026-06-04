@@ -22,12 +22,12 @@
  *   • disabled prop prevents interaction (e.g. badge not earned by parent's knowledge).
  */
 
-import { useCallback, useEffect, useRef } from 'react'
-import { useAccount }                     from 'wagmi'
+import { useCallback, useEffect, useRef }          from 'react'
+import { useAccount }                              from 'wagmi'
 import { ExternalLink, Loader2, RotateCcw, Sparkles } from 'lucide-react'
-import { cn }                             from '@/lib/utils'
-import { useMintBadge }                   from '@/hooks/useMintBadge'
-import { getBadgeTxUrl }                  from '@/lib/onchain/predixiBadges'
+import { cn }                                      from '@/lib/utils'
+import { useMintBadge }                            from '@/hooks/useMintBadge'
+import { getBadgeTxUrl }                           from '@/lib/onchain/predixiBadges'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -66,11 +66,9 @@ export function MintBadgeButton({
 
   const {
     mintBadge,
-    isSigningRequest,
     isRequestingSignature,
     isMintPending,
     isMintConfirming,
-    isSigningConfirm,
     isPersisting,
     isMinted,
     txHash: hookTxHash,
@@ -92,27 +90,19 @@ export function MintBadgeButton({
 
   // ── Click handler ─────────────────────────────────────────────────────────
   const handleClick = useCallback(() => {
-    if (disabled) return
-    if (!isConnected) return
-
-    // Error with cached txHash → retry PATCH only (no new TX)
-    // Error without txHash → full fresh retry
-    if (error) {
-      if (!hookTxHash) reset()  // clear to allow fresh flow
-      mintBadge(badgeId)
-      return
-    }
-
+    if (disabled || !isConnected) return
+    // Error + txHash cached → PATCH-only retry (no new TX, no signing)
+    // Error + no txHash     → full fresh attempt
+    if (error && !hookTxHash) reset()
     mintBadge(badgeId)
   }, [disabled, isConnected, error, hookTxHash, badgeId, mintBadge, reset])
 
   // ── Derived state ──────────────────────────────────────────────────────────
   const isOwned = mintedOnchain || isMinted
-  const isActive = isSigningRequest || isRequestingSignature || isMintPending ||
-                   isMintConfirming || isSigningConfirm || isPersisting
+  const isActive = isRequestingSignature || isMintPending || isMintConfirming || isPersisting
 
-  // TX confirmed but PATCH failed → retry shows "Sign again"
-  const signRetry = !!error && !!hookTxHash
+  // TX confirmed but PATCH failed → retry label is "Save again" (no re-sign needed)
+  const saveRetry = !!error && !!hookTxHash
 
   // ── Owned state (from DB or just minted) ──────────────────────────────────
   if (isOwned && effectiveTxHash) {
@@ -148,13 +138,11 @@ export function MintBadgeButton({
 
   // ── Phase label map ───────────────────────────────────────────────────────
   const label = (() => {
-    if (isSigningRequest)      return 'Signing…'
     if (isRequestingSignature) return 'Requesting…'
     if (isMintPending)         return 'Minting…'
     if (isMintConfirming)      return 'Confirming…'
-    if (isSigningConfirm)      return 'Signing proof…'
     if (isPersisting)          return 'Saving…'
-    if (error)                 return signRetry ? 'Sign again' : 'Try again'
+    if (error)                 return saveRetry ? 'Save again' : 'Try again'
     return 'Mint on Base'
   })()
 
