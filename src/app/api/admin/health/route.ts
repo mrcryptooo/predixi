@@ -10,8 +10,13 @@
  *         Env vars are reported as booleans only — values never exposed.
  */
 
-import { type NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import { type NextRequest, NextResponse }             from 'next/server'
+import { getServerSupabaseClient }                   from '@/lib/supabase/server'
+import {
+  APF_DAILY_BUDGET,
+  APF_DAILY_WARNING,
+  APF_DAILY_HARD_CAP,
+}                                                    from '@/lib/football/apiFootball'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response types
@@ -69,11 +74,23 @@ type ProofPipelineCheck = {
 type EnvCheck = {
   state:                          HealthState
   FOOTBALL_DATA_TOKEN:            boolean
+  API_FOOTBALL_KEY:               boolean
   CRON_SECRET:                    boolean
   ADMIN_SETTLEMENT_KEY:           boolean
   NEXT_PUBLIC_SUPABASE_URL:       boolean
   NEXT_PUBLIC_SUPABASE_ANON_KEY:  boolean
   SUPABASE_SERVICE_ROLE_KEY:      boolean
+}
+
+type ApiBudgetCheck = {
+  state:              HealthState
+  provider:           'apf'
+  callsToday:         number
+  budget:             number    // APF_DAILY_BUDGET
+  warningThreshold:   number    // APF_DAILY_WARNING
+  hardCap:            number    // APF_DAILY_HARD_CAP
+  usedPercent:        number    // callsToday / budget × 100
+  error?:             string
 }
 
 type HealthResponse = {
@@ -85,6 +102,7 @@ type HealthResponse = {
     cron:          CronCheck
     xpPipeline:    XpPipelineCheck
     proofPipeline: ProofPipelineCheck
+    apiBudget:     ApiBudgetCheck
     env:           EnvCheck
   }
   error?: string
@@ -306,6 +324,64 @@ async function checkProofPipeline(supabase: ReturnType<typeof import('@/lib/supa
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function checkApiBudget(supabase: ReturnType<typeof import('@/lib/supabase/server').getServerSupabaseClient>): Promise<ApiBudgetCheck> {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+
+    const { data, error } = await supabase
+      .from('api_request_log')
+      .select('calls_this_day')
+      .eq('date', today)
+      .eq('provider', 'apf')
+
+    if (error) {
+      // Table may not exist yet (migration not yet applied) — return unknown state
+      return {
+        state:            'unknown',
+        provider:         'apf',
+        callsToday:       0,
+        budget:           APF_DAILY_BUDGET,
+        warningThreshold: APF_DAILY_WARNING,
+        hardCap:          APF_DAILY_HARD_CAP,
+        usedPercent:      0,
+        error:            error.message.includes('does not exist')
+          ? 'api_request_log table not yet created — apply supabase/add-api-request-log.sql'
+          : error.message,
+      }
+    }
+
+    const callsToday  = (data ?? []).reduce((sum, r) => sum + (r.calls_this_day ?? 0), 0)
+    const usedPercent = Math.round((callsToday / APF_DAILY_BUDGET) * 100 * 10) / 10
+
+    const state: HealthState =
+      callsToday >= APF_DAILY_HARD_CAP  ? 'error'   :
+      callsToday >= APF_DAILY_WARNING   ? 'warning' :
+      'healthy'
+
+    return {
+      state,
+      provider:         'apf',
+      callsToday,
+      budget:           APF_DAILY_BUDGET,
+      warningThreshold: APF_DAILY_WARNING,
+      hardCap:          APF_DAILY_HARD_CAP,
+      usedPercent,
+    }
+  } catch (e) {
+    return {
+      state:            'error',
+      provider:         'apf',
+      callsToday:       0,
+      budget:           APF_DAILY_BUDGET,
+      warningThreshold: APF_DAILY_WARNING,
+      hardCap:          APF_DAILY_HARD_CAP,
+      usedPercent:      0,
+      error:            String(e),
+    }
+  }
+}
+
 function checkEnv(): EnvCheck {
   const has = (key: string) => {
     const v = process.env[key]
@@ -313,6 +389,7 @@ function checkEnv(): EnvCheck {
   }
 
   const ftConfigured   = has('FOOTBALL_DATA_TOKEN')
+  const apfConfigured  = has('API_FOOTBALL_KEY')
   const cronConfigured = has('CRON_SECRET')
   const adminConfigured = has('ADMIN_SETTLEMENT_KEY')
   const supaUrlConfigured  = has('NEXT_PUBLIC_SUPABASE_URL')
@@ -320,7 +397,8 @@ function checkEnv(): EnvCheck {
   const supaRoleConfigured = has('SUPABASE_SERVICE_ROLE_KEY')
 
   const allCore = supaUrlConfigured && supaAnonConfigured && supaRoleConfigured
-  const allOps  = ftConfigured && cronConfigured && adminConfigured
+  // APF key is now the primary football data source
+  const allOps  = apfConfigured && cronConfigured && adminConfigured
 
   const state: HealthState =
     !allCore ? 'error' :
@@ -330,6 +408,7 @@ function checkEnv(): EnvCheck {
   return {
     state,
     FOOTBALL_DATA_TOKEN:           ftConfigured,
+    API_FOOTBALL_KEY:              apfConfigured,
     CRON_SECRET:                   cronConfigured,
     ADMIN_SETTLEMENT_KEY:          adminConfigured,
     NEXT_PUBLIC_SUPABASE_URL:      supaUrlConfigured,
@@ -352,12 +431,13 @@ export async function GET(req: NextRequest) {
     const supabase = getServerSupabaseClient()
 
     // Run all checks in parallel
-    const [database, fixtures, cron, xpPipeline, proofPipeline] = await Promise.all([
+    const [database, fixtures, cron, xpPipeline, proofPipeline, apiBudget] = await Promise.all([
       checkDatabase(supabase),
       checkFixtures(supabase),
       checkCron(supabase),
       checkXpPipeline(supabase),
       checkProofPipeline(supabase),
+      checkApiBudget(supabase),
     ])
 
     // Env check is synchronous
@@ -366,7 +446,7 @@ export async function GET(req: NextRequest) {
     const response: HealthResponse = {
       success:     true,
       generatedAt: new Date().toISOString(),
-      checks: { database, fixtures, cron, xpPipeline, proofPipeline, env },
+      checks: { database, fixtures, cron, xpPipeline, proofPipeline, apiBudget, env },
     }
 
     return NextResponse.json(response)
