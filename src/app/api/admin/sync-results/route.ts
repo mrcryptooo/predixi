@@ -27,9 +27,10 @@
  *   - Does NOT settle predictions; run auto-settle afterwards
  */
 
-import { type NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import { type NextRequest, NextResponse }         from 'next/server'
+import { getServerSupabaseClient }               from '@/lib/supabase/server'
 import { normalizeFdStatus, normalizeApfStatus } from '@/lib/football/status'
+import { fetchApfFixtures }                      from '@/lib/football/apiFootball'
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 const CANDIDATE_LIMIT_DEFAULT  = 20
@@ -74,30 +75,9 @@ async function fetchFdMatch(numericId: string, token: string): Promise<ApiResult
 }
 
 // ── api-football (api-sports.io) ───────────────────────────────────────────────
-
-async function fetchApfFixture(numericId: string, apiKey: string): Promise<ApiResult> {
-  const url = `https://v3.football.api-sports.io/fixtures?id=${numericId}`
-  try {
-    const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } })
-    if (res.status === 429) return { error: 'Rate limit exceeded', rateLimit: true }
-    if (!res.ok)            return { error: `HTTP ${res.status}` }
-    const data = await res.json() as {
-      response?: Array<{
-        fixture: { status: { short: string } }
-        goals:   { home: number | null; away: number | null }
-      }>
-    }
-    const fixture = data.response?.[0]
-    if (!fixture) return { error: 'No data returned' }
-    return {
-      status:    normalizeApfStatus(fixture.fixture.status.short),
-      homeScore: fixture.goals.home,
-      awayScore: fixture.goals.away,
-    }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) }
-  }
-}
+// APF result lookup now uses fetchApfFixtures({ id }) from the budget-tracked
+// wrapper in src/lib/football/apiFootball.ts. The result is converted to
+// ApiResult inline at the call site below.
 
 // ── Route ──────────────────────────────────────────────────────────────────────
 
@@ -229,6 +209,7 @@ export async function POST(req: NextRequest) {
   const errors:        string[]       = []
   const updatedMatches: UpdatedMatch[] = []
   let rateLimitHit    = false
+  let apfBudgetHit    = false   // true once APF daily hard cap is reached
 
   for (const match of candidates) {
     const id = match.id as string
@@ -261,11 +242,44 @@ export async function POST(req: NextRequest) {
       continue
     }
 
+    if (apfBudgetHit && isApf) {
+      skipped++
+      errors.push(`${id}: skipped — daily APF budget cap reached`)
+      continue
+    }
+
     // Fetch from API
     const numericId = isFd ? id.slice(3) : id.slice(4)
-    const result: ApiResult = isFd
-      ? await fetchFdMatch(numericId, fdToken!)
-      : await fetchApfFixture(numericId, apfKey!)
+
+    // Build ApiResult from whichever provider this match belongs to
+    let result: ApiResult
+    if (isFd) {
+      result = await fetchFdMatch(numericId, fdToken!)
+    } else {
+      // Use the budget-tracked wrapper; convert ApfResult → ApiResult
+      const apfResult = await fetchApfFixtures({ id: parseInt(numericId, 10) })
+      if (!apfResult.ok) {
+        if (apfResult.budgetExceeded) {
+          apfBudgetHit = true
+          result = { error: 'Daily APF budget cap reached', rateLimit: false }
+        } else if (apfResult.rateLimitHit) {
+          result = { error: 'Rate limit exceeded', rateLimit: true }
+        } else {
+          result = { error: apfResult.error }
+        }
+      } else {
+        const fx = apfResult.data[0]
+        if (!fx) {
+          result = { error: 'No fixture data returned for this ID' }
+        } else {
+          result = {
+            status:    normalizeApfStatus(fx.fixture.status.short),
+            homeScore: fx.goals.home,
+            awayScore: fx.goals.away,
+          }
+        }
+      }
+    }
 
     apiCallsUsed++
 
