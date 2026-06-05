@@ -14,16 +14,16 @@ const COMPETITIONS = [
 ];
 
 type StandingRow = {
-  position:       number;
-  teamName:       string;
-  teamShortName:  string;
-  crest?:         string | null;
-  played:         number;
-  won:            number;
-  draw:           number;
-  lost:           number;
-  goalDifference: number;
-  points:         number;
+  position:     number;
+  teamName:     string;
+  teamLogo?:    string | null;   // APF team crest CDN URL
+  played:       number;
+  won:          number;
+  drawn:        number;
+  lost:         number;
+  goalDiff:     number;
+  points:       number;
+  form?:        string | null;
 };
 
 export function StandingsTable() {
@@ -35,10 +35,11 @@ export function StandingsTable() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/football-data/standings?competition=${comp}`)
+    // DB-backed endpoint — reads from Supabase standings table, no external API calls.
+    fetch(`/api/standings?leagueId=${comp}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then((d: { success: boolean; table: StandingRow[] }) => {
-        if (d.success) setTable(d.table);
+      .then((d: { ok: boolean; standings: StandingRow[] }) => {
+        if (d.ok) setTable(d.standings);
         else setError("No standings data.");
       })
       .catch(() => setError("Failed to load standings. Try again later."))
@@ -124,22 +125,21 @@ export function StandingsTable() {
                     </td>
                     <td className="px-2 py-2 max-w-[140px]">
                       <div className="flex items-center gap-2 min-w-0">
-                        <TeamLogo src={row.crest} name={row.teamShortName} size="sm" />
+                        <TeamLogo src={row.teamLogo} name={row.teamName.slice(0, 3).toUpperCase()} size="sm" />
                         <span className="font-semibold text-white/80 truncate">
-                          <span className="hidden sm:inline">{row.teamName}</span>
-                          <span className="sm:hidden">{row.teamShortName}</span>
+                          {row.teamName}
                         </span>
                       </div>
                     </td>
                     <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.played}</td>
                     <td className="px-2 py-2 text-center font-mono text-white/60 tabular-nums">{row.won}</td>
-                    <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.draw}</td>
+                    <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.drawn}</td>
                     <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.lost}</td>
                     <td className={cn(
                       "px-2 py-2 text-center font-mono tabular-nums",
-                      row.goalDifference > 0 ? "text-emerald-400/70" : row.goalDifference < 0 ? "text-danger/60" : "text-white/30"
+                      row.goalDiff > 0 ? "text-emerald-400/70" : row.goalDiff < 0 ? "text-danger/60" : "text-white/30"
                     )}>
-                      {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+                      {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
                     </td>
                     <td className="px-3 py-2 text-center font-mono font-black text-white tabular-nums">{row.points}</td>
                   </tr>
@@ -151,7 +151,7 @@ export function StandingsTable() {
       </div>
 
       <p className="text-[10px] text-white/15 font-mono px-0.5">
-        Top 4 highlighted · Bottom 3 marked · Via football-data.org
+        Top 4 highlighted · Bottom 3 marked · Via API-Football
       </p>
     </div>
   );
