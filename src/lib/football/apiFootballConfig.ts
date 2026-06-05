@@ -100,3 +100,27 @@ export function getApfLeagueIds(): number[] {
 export function getApfLeagueCodes(): string[] {
   return APF_LEAGUES.map(l => l.code)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// World Cup 2026 config
+//
+// Kept separate from APF_LEAGUES so the daily club-league crons are NOT
+// affected. WC sync uses dedicated admin endpoints:
+//   POST /api/admin/sync-wc-fixtures
+//   POST /api/admin/sync-wc-standings
+//
+// APF_CURRENT_SEASON is 2025 for club leagues — do NOT use it for WC.
+// The WC always uses the tournament year (2026) explicitly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const APF_WORLD_CUP = {
+  /** API-Football numeric league ID for FIFA World Cup */
+  id:      1,
+  /** Internal competition code — matches matches.league_id for WC rows */
+  code:    'WC',
+  /** Human-readable name */
+  name:    'FIFA World Cup 2026',
+  country: 'International',
+  /** Season year = tournament year (WC uses the year of the tournament, not start year) */
+  season:  2026,
+} as const
