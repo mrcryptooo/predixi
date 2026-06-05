@@ -190,6 +190,38 @@ export type InsertBadgeMintNonce = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// standings — cached league standings from API-Football
+// Added by supabase/add-standings.sql (Phase D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type StandingRow = {
+  id:            string          // UUID primary key
+  league_id:     string          // competition code, e.g. 'PL' (matches matches.league_id)
+  league_name:   string          // e.g. 'Premier League'
+  league_logo:   string | null   // CDN URL from APF
+  country:       string | null   // e.g. 'England'
+  country_flag:  string | null   // CDN URL from APF
+  season:        number          // e.g. 2025 (for 2025/26)
+  team_id:       string          // 'apf-team-{id}' (matches matches.home/away_team_id)
+  team_name:     string
+  team_logo:     string | null   // CDN URL from APF
+  position:      number
+  points:        number
+  played:        number
+  won:           number
+  drawn:         number
+  lost:          number
+  goals_for:     number
+  goals_against: number
+  goal_diff:     number
+  form:          string | null   // e.g. 'WWDLW'
+  description:   string | null   // e.g. 'Champions League', 'Relegation'
+  updated_at:    string          // ISO timestamp
+}
+
+export type InsertStanding = Omit<StandingRow, 'id' | 'updated_at'>
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Database schema shape (used as generic param for createClient<Database>)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -230,6 +262,11 @@ export type Database = {
         Row: BadgeMintNonceRow
         Insert: InsertBadgeMintNonce
         Update: Partial<BadgeMintNonceRow>
+      }
+      standings: {
+        Row: StandingRow
+        Insert: InsertStanding
+        Update: Partial<StandingRow>
       }
     }
     Views: Record<string, never>

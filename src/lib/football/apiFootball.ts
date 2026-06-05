@@ -145,6 +145,7 @@ export type ApfStandingsPayload = {
     name:       string
     country:    string
     logo:       string              // ← media URL: league logo
+    flag:       string | null       // ← media URL: country flag (null for international)
     season:     number
     standings:  ApfStandingEntry[][]
   }
