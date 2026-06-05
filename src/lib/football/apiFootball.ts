@@ -479,3 +479,69 @@ export function fetchApfTeams(params: {
 }): Promise<ApfResult<ApfTeamPayload[]>> {
   return apfFetch<ApfTeamPayload[]>('teams', params)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// League discovery payload
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** League entry returned by /leagues */
+export type ApfLeaguePayload = {
+  league: {
+    id:   number
+    name: string
+    type: string   // 'League' | 'Cup'
+    logo: string   // ← media URL: league logo
+  }
+  country: {
+    name: string
+    code: string | null
+    flag: string | null   // ← media URL: country flag
+  }
+  seasons: Array<{
+    year:    number
+    start:   string
+    end:     string
+    current: boolean
+    coverage: {
+      fixtures:  { events: boolean; lineups: boolean; statistics_fixtures: boolean; statistics_players: boolean }
+      standings: boolean
+      players:   boolean
+      top_scorers: boolean
+      injuries:  boolean
+      predictions: boolean
+      odds:      boolean
+    }
+  }>
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// League discovery wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch available leagues from API-Football.
+ *
+ * Intended for admin-level league ID verification, not for cron automation.
+ * Uses ~1 of the 7,500 daily budget — call sparingly, only from admin endpoints.
+ *
+ * Response includes league logos and country flags (media URLs) — store in DB.
+ *
+ * @example
+ *   // Discover all currently active leagues
+ *   fetchApfLeagues({ current: true, type: 'League', season: 2025 })
+ *   // Search by name
+ *   fetchApfLeagues({ search: 'Premier' })
+ */
+export function fetchApfLeagues(params?: {
+  current?: boolean
+  type?:    'League' | 'Cup'
+  season?:  number
+  search?:  string
+}): Promise<ApfResult<ApfLeaguePayload[]>> {
+  const p: Record<string, string | number | undefined> = {}
+  if (params?.current !== undefined) p.current = params.current ? 'true' : 'false'
+  if (params?.type    !== undefined) p.type    = params.type
+  if (params?.season  !== undefined) p.season  = params.season
+  if (params?.search  !== undefined) p.search  = params.search
+  return apfFetch<ApfLeaguePayload[]>('leagues', p)
+}
