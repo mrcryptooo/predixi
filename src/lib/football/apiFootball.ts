@@ -95,6 +95,7 @@ export type ApfFixturePayload = {
     name:    string
     country: string
     logo:    string                                 // ← media URL: league logo
+    flag:    string | null                          // ← media URL: country flag (null for international)
     round:   string
     season:  number
   }

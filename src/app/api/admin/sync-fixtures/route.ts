@@ -22,21 +22,18 @@ import {
   inferOutcome,
   validateFixture,
 }                                         from '@/lib/football/status'
+import {
+  fetchApfFixtures,
+}                                         from '@/lib/football/apiFootball'
+import {
+  APF_CURRENT_SEASON,
+  APF_LEAGUES,
+}                                         from '@/lib/football/apiFootballConfig'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** football-data.org competition codes used in this app */
 const FD_COMPETITIONS = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'CL'] as const
-
-/** api-football league IDs → competition codes for these app leagues */
-const APF_LEAGUES: Array<{ id: number; code: string; season: number }> = [
-  { id:  39, code: 'PL',  season: 2025 },
-  { id: 140, code: 'PD',  season: 2025 },
-  { id:  78, code: 'BL1', season: 2025 },
-  { id: 135, code: 'SA',  season: 2025 },
-  { id:  61, code: 'FL1', season: 2025 },
-  { id:   2, code: 'CL',  season: 2025 },
-]
 
 const SYNC_DAYS = 7   // today + 7 days ahead
 
@@ -99,6 +96,12 @@ type MatchRow = {
   venue:           string | null
   actual_outcome:  string | null
   updated_at:      string
+  // Media + traceability fields (added by add-match-media-fields.sql)
+  home_team_crest?: string | null
+  away_team_crest?: string | null
+  league_logo?:     string | null
+  country_flag?:    string | null
+  api_source?:      string | null
 }
 
 type UpsertStats = { inserted: number; updated: number; skipped: number; invalid: number; errors: string[] }
@@ -201,6 +204,7 @@ async function syncFootballData(
         venue:           m.venue ?? null,
         actual_outcome:  inferOutcome(h, a, status),
         updated_at:      new Date().toISOString(),
+        api_source:      'fd',
       }
       const check = validateFixture({
         id: row.id, kickoff: row.kickoff,
@@ -215,50 +219,40 @@ async function syncFootballData(
   return apiCalls
 }
 
-// ── api-football sync ─────────────────────────────────────────────────────────
-
-type ApfFixture = {
-  fixture: { id: number; date: string; venue: { name: string | null }; status: { short: string } }
-  league:  { id: number; round: string }
-  teams:   { home: { id: number; name: string }; away: { id: number; name: string } }
-  goals:   { home: number | null; away: number | null }
-}
+// ── api-football sync (budget-tracked via fetchApfFixtures) ───────────────────
 
 async function syncApiFootball(
-  supabase:   ReturnType<typeof getServerSupabaseClient>,
-  apiKey:     string,
-  dateFrom:   string,
-  dateTo:     string,
-  stats:      UpsertStats,
+  supabase:  ReturnType<typeof getServerSupabaseClient>,
+  dateFrom:  string,
+  dateTo:    string,
+  stats:     UpsertStats,
 ): Promise<number> {
-  const f = proxyFetch()
-  let apiCalls = 0
+  let callsMade = 0
 
   for (const league of APF_LEAGUES) {
-    const url = `https://v3.football.api-sports.io/fixtures?league=${league.id}&season=${league.season}&from=${dateFrom}&to=${dateTo}`
-    let fixtures: ApfFixture[] = []
+    const result = await fetchApfFixtures({
+      league: league.id,
+      season: APF_CURRENT_SEASON,
+      from:   dateFrom,
+      to:     dateTo,
+    })
 
-    try {
-      apiCalls++
-      const res  = await f(url, { headers: { 'x-apisports-key': apiKey } })
-      if (res.status === 429) {
+    callsMade++
+
+    if (!result.ok) {
+      if (result.budgetExceeded) {
+        stats.errors.push(`api-football [${league.code}]: daily budget cap reached — stopping`)
+        break   // no point trying remaining leagues today
+      }
+      if (result.rateLimitHit) {
         stats.errors.push(`api-football [${league.code}]: rate limited`)
         continue
       }
-      if (!res.ok) {
-        stats.errors.push(`api-football [${league.code}]: HTTP ${res.status}`)
-        continue
-      }
-      const data = await res.json() as { response?: ApfFixture[]; errors?: unknown }
-      const hasErr = Array.isArray(data.errors) ? data.errors.length > 0 : !!data.errors
-      if (hasErr) { stats.errors.push(`api-football [${league.code}]: API error`); continue }
-      fixtures = data.response ?? []
-    } catch (e) {
-      stats.errors.push(`api-football [${league.code}]: ${e instanceof Error ? e.message : String(e)}`)
+      stats.errors.push(`api-football [${league.code}]: ${result.error}`)
       continue
     }
 
-    for (const fx of fixtures) {
+    for (const fx of result.data) {
       const status = normalizeApfStatus(fx.fixture.status.short)
       const h = fx.goals.home
       const a = fx.goals.away
@@ -279,6 +273,12 @@ async function syncApiFootball(
         venue:           fx.fixture.venue.name ?? null,
         actual_outcome:  inferOutcome(h, a, status),
         updated_at:      new Date().toISOString(),
+        // Media fields from APF response (stored as CDN URLs, never hotlinked from frontend)
+        home_team_crest: fx.teams.home.logo    ?? null,
+        away_team_crest: fx.teams.away.logo    ?? null,
+        league_logo:     fx.league.logo        ?? null,
+        country_flag:    fx.league.flag        ?? null,
+        api_source:      'apf',
       }
       const check = validateFixture({
         id: row.id, kickoff: row.kickoff,
@@ -290,7 +290,7 @@ async function syncApiFootball(
     }
   }
 
-  return apiCalls
+  return callsMade
 }
 
 // ── POST handler ──────────────────────────────────────────────────────────────
@@ -319,15 +319,17 @@ export async function POST(req: NextRequest) {
     sources.push(`football-data.org (${calls} calls)`)
   }
 
-  // ── api-football ─────────────────────────────────────────────────────────────
-  const apfKey = process.env.API_FOOTBALL_KEY
-  if (apfKey) {
-    const calls = await syncApiFootball(supabase, apfKey, dateFrom, dateTo, stats)
+  // ── api-football (budget-tracked via apiFootball wrapper) ────────────────────
+  // API_FOOTBALL_KEY is read inside fetchApfFixtures — never passed explicitly.
+  // Budget guard at APF_DAILY_HARD_CAP=6000; soft warning at APF_DAILY_WARNING=3000.
+  const apfKeyConfigured = !!process.env.API_FOOTBALL_KEY
+  if (apfKeyConfigured) {
+    const calls = await syncApiFootball(supabase, dateFrom, dateTo, stats)
     apiCallsUsed += calls
-    sources.push(`api-football (${calls} calls)`)
+    sources.push(`api-football (${calls} calls, season ${APF_CURRENT_SEASON})`)
   }
 
-  if (!fdToken && !apfKey) {
+  if (!fdToken && !apfKeyConfigured) {
     return err('No football API key configured (FOOTBALL_DATA_TOKEN or API_FOOTBALL_KEY)', 500)
   }
 
