@@ -75,6 +75,15 @@ export type MatchRow = {
   community_away: number
   created_at: string
   updated_at: string
+  // ── Media / provider fields ─────────────────────────────────────────────────
+  // Added by supabase/add-team-crests.sql (already in DB):
+  home_team_crest: string | null  // team badge CDN URL from API
+  away_team_crest: string | null  // team badge CDN URL from API
+  // Added by supabase/add-match-media-fields.sql:
+  league_logo:     string | null  // league logo CDN URL (APF league.logo)
+  country_flag:    string | null  // country flag CDN URL (APF country.flag)
+  // API source traceability: 'fd' | 'apf' | 'mock' | null
+  api_source:      string | null
 }
 
 export type PredictionRow = {
