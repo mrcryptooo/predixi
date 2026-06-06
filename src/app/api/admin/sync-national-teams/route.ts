@@ -56,16 +56,19 @@ for (const group of worldCupGroups) {
 
 // Extra aliases — APF occasionally uses different name variants
 const NAME_ALIASES: Record<string, string> = {
-  'czech republic':  'czechia',
-  'usa':             'united states',
-  'united states':   'united states',
-  'korea republic':  'south korea',
+  'czech republic':    'czechia',
+  'usa':               'united states',
+  'united states':     'united states',
+  'korea republic':    'south korea',
   'republic of ireland': 'ireland',
-  'ir iran':         'iran',
-  'bosnia': 'bosniaherzegorovina',
-  'bosniaherzegorovina': 'bosniaherzegorovina',  // after normalisation strip
-  'ivory coast':     'ivory coast',
-  'cote divoire':    'ivory coast',
+  'ir iran':           'iran',
+  // APF "Bosnia & Herzegovina" normalises to "bosnia herzegovina" (& stripped, space kept)
+  // worldcup.ts "Bosnia-Herzegovina" normalises to "bosniaherzegovina" (hyphen stripped → no space)
+  'bosnia herzegovina': 'bosniaherzegovina',
+  // APF "Congo DR" vs worldcup.ts "DR Congo" — word order reversed
+  'congo dr':          'dr congo',
+  'ivory coast':       'ivory coast',
+  'cote divoire':      'ivory coast',
 }
 
 function inferFromWcData(apfName: string): { shortCode: string | null; groupCode: string | null } {
