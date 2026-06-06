@@ -547,3 +547,51 @@ export function fetchApfLeagues(params?: {
   if (params?.search  !== undefined) p.search  = params.search
   return apfFetch<ApfLeaguePayload[]>('leagues', p)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Player squad payload
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One player entry inside a squad response.
+ * player.photo is the APF CDN URL — store in DB, never hotlink from frontend.
+ */
+export type ApfSquadPlayer = {
+  id:       number
+  name:     string
+  age:      number | null
+  number:   number | null
+  position: string | null   // 'Goalkeeper' | 'Defender' | 'Midfielder' | 'Attacker'
+  photo:    string          // ← media URL: player photo CDN (media.api-sports.io)
+}
+
+/** Full squad payload returned by /players/squads */
+export type ApfPlayerSquadPayload = {
+  team: {
+    id:   number
+    name: string
+    logo: string              // ← media URL: team logo CDN
+  }
+  players: ApfSquadPlayer[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Player squad wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the full squad (roster + player photos) for a single team.
+ *
+ * Budget-tracked under endpoint 'players/squads'.
+ * For WC 2026: one call per national team (48 teams = 48 calls one-time).
+ *
+ * player.photo URLs are APF CDN — store in DB, never hotlink from frontend.
+ *
+ * @example
+ *   fetchApfPlayerSquads({ team: 6 })   // Brazil squad
+ */
+export function fetchApfPlayerSquads(params: {
+  team: number
+}): Promise<ApfResult<ApfPlayerSquadPayload[]>> {
+  return apfFetch<ApfPlayerSquadPayload[]>('players/squads', { team: params.team })
+}

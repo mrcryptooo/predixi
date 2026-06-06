@@ -245,6 +245,33 @@ export type NationalTeamRow = {
 export type InsertNationalTeam = Omit<NationalTeamRow, 'id' | 'created_at' | 'updated_at'>
 
 // ─────────────────────────────────────────────────────────────────────────────
+// players — WC 2026 player squads from API-Football
+// Added by supabase/add-players.sql (Phase WC-D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PlayerRow = {
+  id:             string          // UUID primary key
+  apf_player_id:  number          // APF numeric player ID
+  player_id:      string          // 'apf-player-{id}'
+  name:           string
+  age:            number | null
+  number:         number | null   // squad shirt number
+  position:       string | null   // Goalkeeper | Defender | Midfielder | Attacker
+  nationality:    string | null
+  photo_url:      string | null   // APF player.photo CDN URL
+  apf_team_id:    number
+  team_id:        string          // 'apf-team-{id}'
+  team_name:      string
+  team_logo_url:  string | null
+  world_cup_year: number          // 2026
+  source:         string          // 'apf'
+  created_at:     string
+  updated_at:     string
+}
+
+export type InsertPlayer = Omit<PlayerRow, 'id' | 'created_at' | 'updated_at'>
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Database schema shape (used as generic param for createClient<Database>)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -295,6 +322,11 @@ export type Database = {
         Row: NationalTeamRow
         Insert: InsertNationalTeam
         Update: Partial<NationalTeamRow>
+      }
+      players: {
+        Row: PlayerRow
+        Insert: InsertPlayer
+        Update: Partial<PlayerRow>
       }
     }
     Views: Record<string, never>
