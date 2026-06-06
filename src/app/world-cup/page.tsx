@@ -338,10 +338,64 @@ function resolveCrest(name: string, code: string, map: Record<string, string>): 
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Minimal shape of a player returned by /api/players
+type ApiPlayer = {
+  name:        string;
+  teamName:    string;
+  position:    string | null;
+  photoUrl:    string | null;
+  age:         number | null;
+};
+
+// Map an API player to a SelectionOption for WorldCupPredictionCard
+function toPlayerOption(p: ApiPlayer): SelectionOption {
+  return {
+    label: p.name,
+    sub:   p.teamName,
+    // Use real APF photo; fall back to generic avatar if absent
+    src:   p.photoUrl ?? AVATAR(0),
+    flag:  FLAG_SRC[p.teamName],
+  };
+}
+
 export default function WorldCupPage() {
   const [wcMatches,  setWcMatches]  = useState<RealMatch[]>([]);
   const [dataSource, setDataSource] = useState<"live" | "fallback">("fallback");
   const [crestMap,   setCrestMap]   = useState<Record<string, string>>({});
+
+  // ── DB-backed player pools — initial values are the static fallbacks ────────
+  // When the DB fetch succeeds, these update with real player photos from APF.
+  // If the fetch fails, static pools with generic avatars remain — no page crash.
+  const [attackerPool,   setAttackerPool]   = useState<SelectionOption[]>(GOLDEN_BOOT_POOL);
+  const [goalkeeperPool, setGoalkeeperPool] = useState<SelectionOption[]>(GOLDEN_GLOVE_POOL);
+  const [youngPool,      setYoungPool]      = useState<SelectionOption[]>(YOUNG_PLAYER_POOL);
+
+  useEffect(() => {
+    // Fetch three player pools from the DB-backed /api/players endpoint.
+    // Never calls API-Football directly — zero APF budget impact.
+    const fetchPlayers = (url: string) =>
+      fetch(url)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null) as Promise<{ ok: boolean; players: ApiPlayer[] } | null>;
+
+    Promise.all([
+      fetchPlayers('/api/players?leagueId=WC&season=2026&position=Attacker&limit=200'),
+      fetchPlayers('/api/players?leagueId=WC&season=2026&position=Goalkeeper&limit=100'),
+      fetchPlayers('/api/players?leagueId=WC&season=2026&limit=300'),
+    ]).then(([attackers, goalkeepers, allPlayers]) => {
+      if (attackers?.ok   && attackers.players.length   > 0)
+        setAttackerPool(attackers.players.map(toPlayerOption));
+      if (goalkeepers?.ok && goalkeepers.players.length > 0)
+        setGoalkeeperPool(goalkeepers.players.map(toPlayerOption));
+      if (allPlayers?.ok  && allPlayers.players.length  > 0) {
+        // Young player pool: prefer players age ≤ 26; fall back to all if too few
+        const young = allPlayers.players
+          .filter(p => p.age !== null && p.age <= 26)
+          .map(toPlayerOption);
+        setYoungPool(young.length >= 10 ? young : allPlayers.players.map(toPlayerOption));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     fetch("/api/matches?source=fd&limit=100")
@@ -425,7 +479,15 @@ export default function WorldCupPage() {
             />
             <div className="space-y-3">
               {TOURNAMENT_PICKS.map((sp, i) => (
-                <WorldCupPredictionCard key={sp.id} prediction={sp} delay={i * 0.05} />
+                <WorldCupPredictionCard
+                  key={sp.id}
+                  prediction={
+                    sp.id === 'wc-golden-boot'  ? { ...sp, pool: attackerPool }   :
+                    sp.id === 'wc-golden-glove' ? { ...sp, pool: goalkeeperPool } :
+                    sp
+                  }
+                  delay={i * 0.05}
+                />
               ))}
             </div>
           </div>
@@ -454,7 +516,14 @@ export default function WorldCupPage() {
           <SectionHeader title="Fun Picks" sub="Extra predictions · Bonus XP" />
           <div className="space-y-3">
             {FUN_PICKS.map((sp, i) => (
-              <WorldCupPredictionCard key={sp.id} prediction={sp} delay={i * 0.05} />
+              <WorldCupPredictionCard
+                key={sp.id}
+                prediction={
+                  sp.id === 'wc-best-young' ? { ...sp, pool: youngPool } :
+                  sp
+                }
+                delay={i * 0.05}
+              />
             ))}
           </div>
         </section>
