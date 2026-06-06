@@ -127,12 +127,27 @@ export function pickRandomPlayerForPosition(
   return available[Math.floor(Math.random() * available.length)];
 }
 
+// ── Dynamic pool override ──────────────────────────────────────────────────
+// Set by DailyHeroes component on mount when it fetches real WC player photos
+// from the DB-backed /api/players endpoint. Falls back to PLAYER_POOL if null.
+
+let _dynamicPool: DailyXIPlayer[] | null = null;
+
+/**
+ * Override the player pool with DB-backed players (e.g. WC 2026 squad data).
+ * Called once on mount by DailyHeroes — never called from server code.
+ */
+export function setDynamicPlayerPool(pool: DailyXIPlayer[]): void {
+  _dynamicPool = pool.length > 0 ? pool : null;
+}
+
 /** Returns pool of players for a position, excluding already-selected ids. */
 export function getPositionPool(
   position: string,
   alreadySelectedIds: string[],
 ): DailyXIPlayer[] {
-  return PLAYER_POOL.filter(
+  const pool = _dynamicPool ?? PLAYER_POOL;
+  return pool.filter(
     p => p.position === position && !alreadySelectedIds.includes(p.id),
   );
 }

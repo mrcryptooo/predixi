@@ -14,12 +14,60 @@ import {
   saveTodayXI,
   clearTodayXI,
   getPositionPool,
+  setDynamicPlayerPool,
   fetchDailyXIRemote,
   fetchDailyXIEntryMeta,
   saveDailyXIRemote,
   type DailyXIPlayer,
   type DailyXIEntryMeta,
 } from "@/lib/daily-xi";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Map DB-backed /api/players response to DailyXIPlayer[]
+// APF uses coarse positions (Goalkeeper/Defender/Midfielder/Attacker).
+// We distribute them evenly across the fine-grained XI slots.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ApiPlayerForXI = {
+  playerId:    string;
+  name:        string;
+  position:    string | null;
+  photoUrl:    string | null;
+  teamName:    string;
+};
+
+/** APF coarse position → valid XI position codes (cycle with index % length) */
+const XI_POS_MAP: Record<string, string[]> = {
+  Goalkeeper: ["GK"],
+  Defender:   ["RB", "CB", "LB"],
+  Midfielder: ["RM", "CM", "LM"],
+  Attacker:   ["ST"],
+};
+
+function apiPlayersToXI(players: ApiPlayerForXI[]): DailyXIPlayer[] {
+  // Group by coarse APF position
+  const grouped: Record<string, ApiPlayerForXI[]> = {};
+  for (const p of players) {
+    const pos = p.position ?? "Attacker";
+    (grouped[pos] ??= []).push(p);
+  }
+  const result: DailyXIPlayer[] = [];
+  for (const [apfPos, group] of Object.entries(grouped)) {
+    const xiSlots = XI_POS_MAP[apfPos] ?? ["ST"];
+    group.forEach((p, i) => {
+      result.push({
+        id:        p.playerId,
+        name:      p.name,
+        position:  xiSlots[i % xiSlots.length],
+        team:      p.teamName,
+        teamShort: p.teamName.slice(0, 3).toUpperCase(),
+        image:     p.photoUrl ?? "/brand/players/avatar-1.svg",
+        styleTag:  p.teamName,
+      });
+    });
+  }
+  return result;
+}
 import { DailyXIPitch } from "@/components/home/DailyXIPitch";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,6 +325,19 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
 
   // Keep slotsRef in sync with slots state so interval closures always see current slots
   useEffect(() => { slotsRef.current = slots; }, [slots]);
+
+  // Step 0 — load real WC player pool from DB-backed /api/players (zero APF calls)
+  // Falls back silently to static PLAYER_POOL if fetch fails or returns empty.
+  useEffect(() => {
+    fetch("/api/players?leagueId=WC&season=2026&limit=1500")
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+      .then((d: { ok: boolean; players: ApiPlayerForXI[] } | null) => {
+        if (d?.ok && d.players.length > 0) {
+          setDynamicPlayerPool(apiPlayersToXI(d.players));
+        }
+      });
+  }, []);
 
   // Step 1 — hydrate from localStorage immediately
   useEffect(() => {
