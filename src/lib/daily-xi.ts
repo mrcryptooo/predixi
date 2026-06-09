@@ -244,8 +244,9 @@ export async function fetchDailyXIEntryMeta(
  */
 /**
  * Persist the Daily XI slots to Supabase.
- * Throws on network failure or non-ok HTTP response, with the server's error
- * message so callers can surface the exact reason to the user.
+ * Returns { commitmentHash } from the POST response so the caller can
+ * show the Anchor on Base button immediately without a separate meta refetch.
+ * Throws on network failure or non-ok HTTP response with the server's error message.
  * localStorage must already be saved before calling this.
  */
 export async function saveDailyXIRemote(
@@ -253,7 +254,7 @@ export async function saveDailyXIRemote(
   players: (DailyXIPlayer | null)[],
   date?: string,
   auth?: { message: string; signature: string },
-): Promise<void> {
+): Promise<{ commitmentHash: string | null }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   // HTTP header values cannot contain newlines (RFC 7230) — the auth message is
   // a multiline string joined with \n.  encodeURIComponent makes it header-safe.
@@ -289,5 +290,14 @@ export async function saveDailyXIRemote(
     } catch { /* ignore JSON parse failure */ }
     console.warn("[DailyXI] remote save rejected:", res.status, serverMsg);
     throw new Error(serverMsg);
+  }
+
+  // Extract commitmentHash from successful response so callers can display
+  // the Anchor on Base button immediately without a separate entryMeta refetch.
+  try {
+    const data = await res.json() as { commitmentHash?: string };
+    return { commitmentHash: data.commitmentHash ?? null };
+  } catch {
+    return { commitmentHash: null };
   }
 }

@@ -485,9 +485,19 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
       const message   = buildPredixiAuthMessage(address, 'daily-xi', nonce);
       const signature = await signMessageAsync({ message });
       // saveDailyXIRemote throws on any failure with the actual server reason
-      await saveDailyXIRemote(address, slots as DailyXIPlayer[], undefined, { message, signature });
+      const { commitmentHash: newHash } = await saveDailyXIRemote(address, slots as DailyXIPlayer[], undefined, { message, signature });
       setSubmitted(true);
-      // Refresh entry meta so scoring panel updates if already scored
+      // Optimistically surface the commitmentHash from the POST response
+      // so the Anchor on Base button appears immediately without waiting for the meta refetch.
+      if (newHash) {
+        setEntryMeta(prev => ({
+          ...(prev ?? { status: 'pending', earnedXp: 0, projectedMaxXp: 20 }),
+          commitmentHash:   newHash,
+          submittedOnchain: false,
+          txHash:           null,
+        }));
+      }
+      // Full meta refetch for accuracy (scoring status, etc.)
       fetchDailyXIEntryMeta(address)
         .then(meta => { if (meta) setEntryMeta(meta); })
         .catch(() => {/* silent */});
@@ -528,8 +538,8 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[9px] font-mono font-bold text-amber-400 whitespace-nowrap">
-              On-chain soon
+            <span className="px-2 py-1 rounded-lg bg-primary/10 border border-primary/20 text-[9px] font-mono font-bold text-primary/60 whitespace-nowrap">
+              Base
             </span>
             <button type="button" onClick={() => setShowHelp(v => !v)}
               className="w-6 h-6 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-white/30 hover:text-primary transition-colors">
@@ -574,6 +584,16 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             submitted={submitted}
             isConnected={isConnected}
             submitError={submitError}
+            commitmentHash={entryMeta?.commitmentHash ?? null}
+            submittedOnchain={entryMeta?.submittedOnchain ?? false}
+            txHash={entryMeta?.txHash ?? null}
+            entryDate={new Date().toISOString().slice(0, 10)}
+            onAnchorSuccess={(anchorTxHash) => {
+              setEntryMeta(prev => prev
+                ? { ...prev, submittedOnchain: true, txHash: anchorTxHash }
+                : null
+              );
+            }}
           />
         ) : (
           <div className="space-y-3">

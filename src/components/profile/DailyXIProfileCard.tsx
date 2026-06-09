@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 import { cn } from "@/lib/utils";
 import { XI_POSITIONS, loadTodayXI, saveTodayXI, fetchDailyXIRemote, fetchDailyXIEntryMeta, type DailyXIPlayer, type DailyXIEntryMeta } from "@/lib/daily-xi";
 import { ProofBadge } from "@/components/proof/ProofBadge";
+import { AnchorDailyXIButton } from "@/components/onchain/AnchorDailyXIButton";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single player token in the strip
@@ -138,11 +139,28 @@ export function DailyXIProfileCard() {
                   {entryMeta?.status === 'scored' ? 'Scored' : 'Max 20 XP · Scored after matches'}
                 </span>
                 {entryMeta?.commitmentHash && (
-                  <ProofBadge
-                    commitmentHash={entryMeta.commitmentHash}
-                    submittedOnchain={entryMeta.submittedOnchain}
-                    txHash={entryMeta.txHash}
-                  />
+                  <>
+                    <ProofBadge
+                      commitmentHash={entryMeta.commitmentHash}
+                      submittedOnchain={entryMeta.submittedOnchain}
+                      txHash={entryMeta.txHash}
+                    />
+                    {/* Anchor on Base — only shows when not yet anchored and wallet is connected */}
+                    {!entryMeta.submittedOnchain && (
+                      <AnchorDailyXIButton
+                        entryDate={new Date().toISOString().slice(0, 10)}
+                        commitmentHash={entryMeta.commitmentHash}
+                        submittedOnchain={false}
+                        txHash={null}
+                        onAnchorSuccess={(anchorTxHash) => {
+                          setEntryMeta(prev => prev
+                            ? { ...prev, submittedOnchain: true, txHash: anchorTxHash }
+                            : null
+                          );
+                        }}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </div>

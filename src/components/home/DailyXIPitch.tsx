@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { XI_POSITIONS, type DailyXIPlayer } from "@/lib/daily-xi";
 import { shareDailyXI, isShareSupported } from "@/lib/base-app-actions";
+import { AnchorDailyXIButton } from "@/components/onchain/AnchorDailyXIButton";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Staggered pitch positions — [top%, left%]
@@ -147,23 +148,34 @@ function PitchSVG() {
 export function DailyXIPitch({
   slots,
   onReset,
-  earnedXp    = 0,
-  status      = 'pending',
+  earnedXp        = 0,
+  status          = 'pending',
   onSubmit,
-  submitting  = false,
-  submitted   = false,
-  isConnected = false,
+  submitting      = false,
+  submitted       = false,
+  isConnected     = false,
   submitError,
+  // ── Anchor on Base props ──────────────────────────────────────────────────
+  commitmentHash,
+  submittedOnchain = false,
+  txHash,
+  entryDate,
+  onAnchorSuccess,
 }: {
-  slots:        (DailyXIPlayer | null)[];
-  onReset?:     () => void;
-  earnedXp?:    number;
-  status?:      string;
-  onSubmit?:    () => void;
-  submitting?:  boolean;
-  submitted?:   boolean;
-  isConnected?: boolean;
-  submitError?: string | null;
+  slots:             (DailyXIPlayer | null)[];
+  onReset?:          () => void;
+  earnedXp?:         number;
+  status?:           string;
+  onSubmit?:         () => void;
+  submitting?:       boolean;
+  submitted?:        boolean;
+  isConnected?:      boolean;
+  submitError?:      string | null;
+  commitmentHash?:   string | null;
+  submittedOnchain?: boolean;
+  txHash?:           string | null;
+  entryDate?:        string;
+  onAnchorSuccess?:  (txHash: string) => void;
 }) {
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
 
@@ -335,10 +347,35 @@ export function DailyXIPitch({
 
       {/* ── Final Submit CTA ─────────────────────────────────────────────── */}
       {submitted ? (
-        // Submitted state — green confirmation
-        <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-success/10 border border-success/25">
-          <CheckCircle2 size={13} className="text-success/70 flex-shrink-0" />
-          <span className="text-xs font-bold text-success/75">Final XI submitted</span>
+        // Submitted state — green confirmation + optional anchor button
+        <div className="space-y-2">
+          <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-success/10 border border-success/25">
+            <CheckCircle2 size={13} className="text-success/70 flex-shrink-0" />
+            <span className="text-xs font-bold text-success/75">Final XI submitted</span>
+          </div>
+          {/* Anchor on Base — only renders when commitmentHash is present and wallet connected */}
+          {commitmentHash && (
+            <div className={cn(
+              "flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl",
+              "border border-primary/15 bg-gradient-to-r from-primary/[0.05] to-transparent",
+            )}>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-white/45 leading-none mb-0.5">
+                  Anchor on Base
+                </p>
+                <p className="text-[9px] font-mono text-white/22 leading-none">
+                  Optional · Keeps a permanent onchain proof · Small Base fee
+                </p>
+              </div>
+              <AnchorDailyXIButton
+                entryDate={entryDate ?? new Date().toISOString().slice(0, 10)}
+                commitmentHash={commitmentHash}
+                submittedOnchain={submittedOnchain}
+                txHash={txHash ?? null}
+                onAnchorSuccess={onAnchorSuccess}
+              />
+            </div>
+          )}
         </div>
       ) : !isConnected ? (
         // Not connected — guidance only, no remote save
@@ -373,7 +410,11 @@ export function DailyXIPitch({
       {/* Share + Reset row */}
       <div className="flex items-center justify-between px-1">
         <p className="text-[9px] text-white/15 font-mono">
-          {submitted ? "Synced · On-chain soon" : "Base transaction coming soon"}
+          {submitted
+            ? submittedOnchain
+              ? "Synced · Anchored on Base ✓"
+              : "Synced · Anchor on Base to prove it"
+            : "Submit XI to anchor on Base"}
         </p>
         <div className="flex items-center gap-3">
           <button
