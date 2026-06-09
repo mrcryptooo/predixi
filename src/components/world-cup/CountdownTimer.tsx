@@ -143,9 +143,6 @@ export function CountdownTimer({ className }: CountdownTimerProps) {
             <span className="text-[9px] font-mono font-bold bg-warning/15 text-warning border border-warning/25 px-2 py-1 rounded-lg">
               DEMO DATA
             </span>
-            <span className="text-[9px] font-mono font-bold bg-primary/15 text-primary border border-primary/20 px-2 py-1 rounded-lg">
-              PHASE 1
-            </span>
           </div>
         </div>
 

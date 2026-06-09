@@ -113,11 +113,9 @@ function ResultBox({ data, type }: { data: SyncResult | SettleResult | null; typ
       </div>
       {type === "sync" && (() => {
         const d = data as SyncResult;
-        const fetched  = d.totalFetched  ?? d.fetched  ?? 0;
         const inserted = d.totalInserted ?? d.inserted ?? 0;
         const updated  = d.totalUpdated  ?? d.updated  ?? 0;
         return <>
-          <div>Fetched: {fetched}</div>
           <div>Inserted: {inserted}</div>
           <div>Updated: {updated}</div>
         </>;
@@ -142,19 +140,16 @@ function ResultBox({ data, type }: { data: SyncResult | SettleResult | null; typ
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  // Secret — in-memory only
-  const [secret, setSecret] = useState("");
+  // Admin key — in-memory only, never stored
+  const [adminKey, setAdminKey] = useState("");
 
   // Sync state
-  const [competition, setCompetition] = useState("PL");
-  const [dateFrom,    setDateFrom]    = useState("2026-05-13");
-  const [dateTo,      setDateTo]      = useState("2026-05-19");
   const [syncing,     setSyncing]     = useState(false);
   const [syncResult,  setSyncResult]  = useState<SyncResult | null>(null);
 
   // Settle state
   const [matchId,       setMatchId]       = useState("");
-  const [actualOutcome, setActualOutcome] = useState("H");
+  const [actualResult,  setActualResult]  = useState<"home" | "draw" | "away">("home");
   const [settling,      setSettling]      = useState(false);
   const [settleResult,  setSettleResult]  = useState<SettleResult | null>(null);
 
@@ -162,15 +157,14 @@ export default function AdminPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/football-data/sync-matches", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
-        body: JSON.stringify({ competition, dateFrom, dateTo }),
+      const res = await fetch("/api/admin/sync-fixtures", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
       });
       const data = await res.json() as SyncResult;
       setSyncResult(data);
     } catch {
-      setSyncResult({ success: false, error: "Request failed." });
+      setSyncResult({ success: false, error: "Request failed — check console." });
     } finally {
       setSyncing(false);
     }
@@ -180,16 +174,16 @@ export default function AdminPage() {
     setSettling(true);
     setSettleResult(null);
     try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
-        body: JSON.stringify({ matchId, actualOutcome }),
+      const res = await fetch("/api/admin/settle-match", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+        body:    JSON.stringify({ matchId, actualResult }),
       });
       const data = await res.json() as SettleResult;
       if (res.status === 409) setSettleResult({ ...data, success: false, alreadySettled: true });
       else setSettleResult(data);
     } catch {
-      setSettleResult({ success: false, error: "Request failed." });
+      setSettleResult({ success: false, error: "Request failed — check console." });
     } finally {
       setSettling(false);
     }
@@ -214,55 +208,39 @@ export default function AdminPage() {
         <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-500/8 border border-amber-500/20">
           <AlertTriangle size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-amber-300/70 font-mono leading-relaxed">
-            Do not share your admin secret. Do not use on public networks.
+            Do not share your admin key. Do not use on public networks.
           </p>
         </div>
 
-        {/* Section 1: Admin Secret */}
+        {/* Section 1: Admin Key */}
         <Card>
           <div className="flex items-center gap-2 text-[11px] font-mono font-semibold text-white/50 uppercase tracking-wider">
-            <Shield size={11} /> Admin Secret
+            <Shield size={11} /> Admin Key
           </div>
           <div>
-            <Label>Secret (kept in memory only)</Label>
+            <Label>Key (kept in memory only)</Label>
             <Input
               type="password"
-              value={secret}
-              onChange={e => setSecret(e.target.value)}
-              placeholder="Enter admin secret…"
+              value={adminKey}
+              onChange={e => setAdminKey(e.target.value)}
+              placeholder="Enter admin key…"
               autoComplete="off"
             />
           </div>
         </Card>
 
-        {/* Section 2: Sync Matches */}
+        {/* Section 2: Sync Fixtures */}
         <Card>
           <div className="flex items-center gap-2 text-[11px] font-mono font-semibold text-white/50 uppercase tracking-wider">
-            <RefreshCw size={11} /> Sync Matches
+            <RefreshCw size={11} /> Sync Fixtures
           </div>
 
-          <div>
-            <Label>Competition</Label>
-            <Select value={competition} onChange={e => setCompetition(e.target.value)}>
-              {["PL","PD","BL1","SA","FL1","WC"].map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </Select>
-          </div>
+          <p className="text-[11px] font-mono text-white/30 leading-relaxed">
+            Fetches today + 7 days of fixtures from football-data.org and API-Football. No date inputs required.
+          </p>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Date From</Label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-            </div>
-            <div>
-              <Label>Date To</Label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-            </div>
-          </div>
-
-          <Btn loading={syncing} disabled={!secret} onClick={handleSync}>
-            Sync Matches
+          <Btn loading={syncing} disabled={!adminKey} onClick={handleSync}>
+            Sync Fixtures
           </Btn>
 
           <ResultBox data={syncResult} type="sync" />
@@ -285,15 +263,15 @@ export default function AdminPage() {
           </div>
 
           <div>
-            <Label>Actual Outcome</Label>
-            <Select value={actualOutcome} onChange={e => setActualOutcome(e.target.value)}>
-              <option value="H">H — Home Win</option>
-              <option value="D">D — Draw</option>
-              <option value="A">A — Away Win</option>
+            <Label>Actual Result</Label>
+            <Select value={actualResult} onChange={e => setActualResult(e.target.value as "home" | "draw" | "away")}>
+              <option value="home">home — Home Win</option>
+              <option value="draw">draw — Draw</option>
+              <option value="away">away — Away Win</option>
             </Select>
           </div>
 
-          <Btn loading={settling} disabled={!secret || !matchId} variant="success" onClick={handleSettle}>
+          <Btn loading={settling} disabled={!adminKey || !matchId} variant="success" onClick={handleSettle}>
             Settle Match
           </Btn>
 
@@ -309,7 +287,7 @@ export default function AdminPage() {
             <li>· Sync only fetches match data — it does not settle games.</li>
             <li>· Settlement awards XP and cannot double-award the same match.</li>
             <li>· Use the correct final result before settling.</li>
-            <li>· Admin secret is never stored — it lives in memory only.</li>
+            <li>· Admin key is never stored — it lives in memory only.</li>
           </ul>
         </Card>
 

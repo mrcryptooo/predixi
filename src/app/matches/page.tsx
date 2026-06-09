@@ -175,14 +175,14 @@ export default function MatchesPage() {
                   Pick your football outcomes and build your PrediXI reputation.
                 </p>
 
-                {/* Phase notice */}
+                {/* Info notice */}
                 <div className={cn(
                   "flex items-center gap-2.5 px-3 py-2.5 rounded-xl",
                   "bg-white/[0.04] border border-white/[0.07]"
                 )}>
                   <Info size={11} className="text-white/25 flex-shrink-0" />
                   <p className="text-[11px] text-white/30 font-mono leading-relaxed">
-                    Predictions are local mock actions in Phase 1 — on-chain proof coming later.
+                    Predictions are saved securely. Anchor on Base to create an immutable on-chain proof.
                   </p>
                 </div>
               </div>

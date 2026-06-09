@@ -775,7 +775,7 @@ function DailyXIBatchForm() {
         <AlertTriangle size={11} className="text-amber-400/70 flex-shrink-0 mt-0.5" />
         <p className="text-[10px] font-mono text-white/30 leading-relaxed">
           This scores all pending Daily XI entries up to the batch limit.
-          Uses mock provider stats. Idempotent — already-scored entries are skipped.
+          Uses the configured player stats provider (mock or API-Football). Idempotent — already-scored entries are skipped.
         </p>
       </div>
 
@@ -1098,7 +1098,7 @@ function DailyXIScoringForm({ adminKey }: { adminKey: string }) {
     setResult(null);
     setPreviewXp(null);
     try {
-      // Step 1 — fetch mock stats for this entry
+      // Step 1 — fetch player stats preview for this entry
       const previewRes = await fetch("/api/admin/daily-xi-stats-preview", {
         method:  "POST",
         headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
