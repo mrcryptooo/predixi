@@ -149,9 +149,40 @@ export async function POST(req: NextRequest) {
       projectedMaxXp: maxXp,
     })
 
-    // ── Upsert ───────────────────────────────────────────────────────────────
+    // ── DB client ────────────────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
 
+    // ── Guard: reject if today's entry is already scored ─────────────────────
+    // Without this guard, a POST on a scored entry resets status → 'pending'
+    // because the upsert always writes status:'pending'. The cron would then
+    // re-score the next day, awarding duplicate XP if the unique constraint
+    // weren't present — confusing and messy. Block it cleanly at the API layer.
+    {
+      const { data: existing, error: existingErr } = await supabase
+        .from('daily_xi_entries')
+        .select('status')
+        .eq('wallet_address', normalizedWallet)
+        .eq('entry_date', date)
+        .maybeSingle()
+
+      if (existingErr) {
+        console.error('[POST /api/daily-xi] scored-entry check:', existingErr)
+        return err('Failed to verify entry status', 500)
+      }
+
+      if ((existing as { status: string } | null)?.status === 'scored') {
+        return NextResponse.json(
+          {
+            success:       false,
+            error:         "Today's Daily XI has already been scored. Your XP has been awarded — come back tomorrow to build a new XI.",
+            alreadyScored: true,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
+    // ── Upsert ───────────────────────────────────────────────────────────────
     const { data, error } = await supabase
       .from('daily_xi_entries')
       .upsert(

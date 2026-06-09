@@ -191,15 +191,27 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // leaderboard_stats XP increment
+      // profiles.xp + leaderboard_stats XP increment
       if (totalXp > 0 && !xpDuplicate) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, xp')
           .eq('wallet_address', wallet)
           .maybeSingle()
 
         if (profile?.id) {
+          // ── profiles.xp (non-fatal, read-then-write is acceptable here
+          //    because the cron runs once daily and concurrent scoring for the
+          //    same wallet is not possible within a single cron invocation) ──
+          try {
+            await supabase
+              .from('profiles')
+              .update({ xp: (profile.xp ?? 0) + totalXp })
+              .eq('id', profile.id as string)
+          } catch (profileXpErr) {
+            console.warn('[cron/score-daily-xi] profiles.xp update error:', profileXpErr)
+          }
+
           await incrementLeaderboardXP(supabase, profile.id as string, totalXp)
         }
 

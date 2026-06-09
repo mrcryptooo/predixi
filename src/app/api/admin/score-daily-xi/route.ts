@@ -175,15 +175,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── leaderboard_stats XP (XP only — no prediction counts) ─────────────────
+  // ── profiles.xp + leaderboard_stats XP (XP only — no prediction counts) ────
   if (totalXp > 0 && !xpDuplicate) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('id')
+      .select('id, xp')
       .eq('wallet_address', wallet)
       .maybeSingle()
 
     if (profile?.id) {
+      // ── profiles.xp (non-fatal) ───────────────────────────────────────────
+      try {
+        await supabase
+          .from('profiles')
+          .update({ xp: (profile.xp ?? 0) + totalXp })
+          .eq('id', profile.id as string)
+      } catch (profileXpErr) {
+        console.warn('[score-daily-xi] profiles.xp update error:', profileXpErr)
+      }
+
       await incrementLeaderboardXP(supabase, profile.id as string, totalXp)
     }
 
