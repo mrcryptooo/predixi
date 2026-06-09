@@ -74,9 +74,13 @@ import { DailyXIPitch } from "@/components/home/DailyXIPitch";
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPIN_TICKS = 20;   // total ticks before settling
-const TICK_MS   = 90;    // ms per tick — 90ms is more reliable across React render cycles
-const OFFSETS   = [-2, -1, 0, 1, 2] as const;
+const SPIN_TICKS    = 20;   // total ticks before settling
+const TICK_MS       = 90;   // ms per tick — 90ms is more reliable across React render cycles
+const OFFSETS       = [-2, -1, 0, 1, 2] as const;
+// Cap animation carousel to a compact subset for smooth rendering.
+// Winner is chosen from the FULL position pool (hundreds of players);
+// only SPIN_POOL_MAX items are needed for the visual spin track.
+const SPIN_POOL_MAX = 12;
 
 type CardSize = "xs" | "sm" | "lg";
 const SIZES: CardSize[]  = ["xs", "sm", "lg", "sm", "xs"];
@@ -92,12 +96,15 @@ function buildStablePool(rawPool: DailyXIPlayer[], finalPlayer: DailyXIPlayer): 
   pool: DailyXIPlayer[];
   startIdx: number;
 } {
-  // Others = pool minus finalPlayer (shuffled for visual variety)
+  // Winners are selected from the full rawPool above — here we build a compact
+  // visual-only carousel pool capped at SPIN_POOL_MAX items for smooth rendering.
+  // Shuffling a 300-item pool on every spin caused heavy re-render thrashing.
   const others = rawPool
     .filter(p => p.id !== finalPlayer.id)
-    .sort(() => Math.random() - 0.5);
+    .sort(() => Math.random() - 0.5)
+    .slice(0, SPIN_POOL_MAX - 1);   // ← cap: only need (SPIN_POOL_MAX-1) visual companions
 
-  // Arrange: finalPlayer at index 0, then others, padded to ≥ 5
+  // Arrange: finalPlayer at index 0, then a compact set of others, padded to ≥ 5
   const base = [finalPlayer, ...others];
   const pool = base.length >= 5
     ? base
@@ -317,8 +324,12 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Stable refs — these never go stale inside the interval closure
-  const stablePoolRef  = useRef<DailyXIPlayer[]>([]);
-  const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stablePoolRef   = useRef<DailyXIPlayer[]>([]);
+  const intervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Synchronous guard to prevent double-spin before React commits spinning:true.
+  // Without this, a fast second click during the 32ms setTimeout delay could start
+  // a second spin because spinning state hasn't committed yet.
+  const isSpinActiveRef = useRef(false);
   // slotsRef mirrors the slots state so interval callbacks can read current slots
   // without relying on the prev => updater form (which blocks signing calls).
   const slotsRef       = useRef<(DailyXIPlayer | null)[]>(Array(11).fill(null));
@@ -375,7 +386,11 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
     const raw   = getPositionPool(currentPos, taken);
     if (raw.length === 0) { setPoolErr(true); setCarouselPool([]); return; }
     setPoolErr(false);
-    const display = [...raw].sort(() => Math.random() - 0.5);
+    // Cap display pool to SPIN_POOL_MAX — carousel only shows 5 cards at a time;
+    // shuffling and storing hundreds of players caused render thrashing.
+    const display = [...raw]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, SPIN_POOL_MAX);
     const padded  = display.length >= 5 ? display
       : [...display, ...display, ...display].slice(0, 5);
     setCarouselPool(padded);
@@ -388,8 +403,11 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
   const handleSpin = () => {
-    // Hard guard: reject if any interval is still alive or already spinning
-    if (intervalRef.current || spinning || allFilled || !isConnected || !currentPos) return;
+    // Hard guard: reject if any interval is still alive or already spinning.
+    // isSpinActiveRef is synchronous — prevents race where spinning state hasn't
+    // committed yet between a rapid double-click and the 32ms setTimeout start.
+    if (isSpinActiveRef.current || intervalRef.current || spinning || allFilled || !isConnected || !currentPos) return;
+    isSpinActiveRef.current = true;
 
     setJustPicked(null);
 
@@ -422,7 +440,8 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
 
         if (ticks >= SPIN_TICKS) {
           clearInterval(intervalRef.current!);
-          intervalRef.current = null;
+          intervalRef.current    = null;
+          isSpinActiveRef.current = false;   // ← release guard so next spin can start
           setJustPicked(finalPlayer);
 
           // Build next slots using ref (avoids stale closure inside setSlots updater)
@@ -444,6 +463,8 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
 
   const handleReset = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current     = null;
+    isSpinActiveRef.current = false;   // ← release guard on reset
     clearTodayXI();
     setSlots(Array(11).fill(null));
     setSpinning(false);
