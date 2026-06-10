@@ -9,6 +9,7 @@ import { wagmiConfig }                         from '@/config/wagmi'
 import { logBaseAppContext, wasIntentionallyDisconnected } from '@/lib/base-app'
 import { isShareSupported }                                from '@/lib/base-app-actions'
 import { useReferralCapture }                              from '@/hooks/useReferralCapture'
+import { useMiniApp }                                      from '@/hooks/useMiniApp'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // App-wide side effects that need wagmi context
@@ -17,6 +18,7 @@ import { useReferralCapture }                              from '@/hooks/useRefe
 
 function AppEffects() {
   useReferralCapture()
+  useMiniApp()   // calls sdk.actions.ready() — dismisses Base Mini App splash screen
   return null
 }
 

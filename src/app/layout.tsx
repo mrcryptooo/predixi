@@ -22,11 +22,6 @@ export const metadata: Metadata = {
     "Predict football match outcomes, earn rewards, and compete on-chain. Built for Base App.",
   keywords: ["football", "prediction", "web3", "Base", "crypto", "blockchain", "earn"],
 
-  // ── Manifest ──────────────────────────────────────────────────────────────
-  // favicon.ico, icon.tsx, apple-icon.tsx, opengraph-image.tsx are handled
-  // via Next.js App Router file conventions — no manual icons config needed.
-  manifest: "/site.webmanifest",
-
   // ── Open Graph ────────────────────────────────────────────────────────────
   // opengraph-image.tsx auto-generates the og:image tag.
   // Explicit metadata here covers title/description/siteName only.
@@ -46,8 +41,26 @@ export const metadata: Metadata = {
     description: "Predict football match outcomes, earn XP, and compete on-chain. Built for Base App.",
   },
 
-  // ── Base App ──────────────────────────────────────────────────────────────
+  // ── Base Mini App / Farcaster frame embed ────────────────────────────────
+  // fc:frame embeds Mini App metadata for discovery via link unfurling in
+  // Warpcast / Base App. Matches the frame config in /.well-known/farcaster.json.
   other: {
+    "fc:frame": JSON.stringify({
+      version:  'next',
+      imageUrl: 'https://predixi-base.vercel.app/opengraph-image',
+      button: {
+        title:  'Play PrediXI',
+        action: {
+          type:                  'launch_frame',
+          name:                  'PrediXI',
+          url:                   'https://predixi-base.vercel.app',
+          splashImageUrl:        'https://predixi-base.vercel.app/splash',
+          splashBackgroundColor: '#07080F',
+        },
+      },
+    }),
+
+    // ── Base App ────────────────────────────────────────────────────────────
     "base:app_id":                   "69fc81c8bced645c370bd8fe",
     "mobile-web-app-capable":        "yes",
     "apple-mobile-web-app-capable":  "yes",

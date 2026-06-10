@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@base-org/account": "^2.5.5",
+    "@farcaster/frame-sdk": "^0.2.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@supabase/supabase-js": "^2.105.4",
