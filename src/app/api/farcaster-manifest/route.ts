@@ -33,7 +33,7 @@ export async function GET() {
       frame: {
         version:               'next',
         name:                  'PrediXI',
-        iconUrl:               `${APP_URL}/icon.png`,
+        iconUrl:               `${APP_URL}/icon`,
         homeUrl:               APP_URL,
         imageUrl:              `${APP_URL}/opengraph-image`,
         buttonTitle:           'Play PrediXI',
