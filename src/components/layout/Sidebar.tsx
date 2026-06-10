@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Home, CalendarDays, Trophy, Globe, User, Zap } from "lucide-react";
+import { Home, CalendarDays, Trophy, Globe, User, Zap, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -110,6 +110,35 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* ── Secondary nav ───────────────────────────────────────────────── */}
+      <div className="px-3 pb-2 border-t border-border pt-3">
+        <p className="text-[9px] font-mono text-text-muted uppercase tracking-[0.14em] px-3 mb-1.5">
+          Resources
+        </p>
+        {[{ href: "/docs", label: "Docs", icon: BookOpen }].map(({ href, label, icon: Icon }) => {
+          const active = pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium",
+                "transition-all duration-150",
+                active
+                  ? "bg-primary/12 text-primary border border-primary/20"
+                  : "text-text-secondary hover:text-white hover:bg-white/5 border border-transparent"
+              )}
+            >
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
+              )}
+              <Icon size={15} strokeWidth={active ? 2.5 : 2} className={cn("flex-shrink-0", active ? "text-primary" : "text-text-muted")} />
+              {label}
+            </Link>
+          );
+        })}
+      </div>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
       <div className="px-4 py-4 border-t border-border space-y-3">

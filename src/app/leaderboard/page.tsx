@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Trophy, Zap, Flame, Target } from "lucide-react";
+import { Trophy, Zap, Flame, Target, Gift } from "lucide-react";
 import { useAccount } from "wagmi";
 import { PodiumCard }           from "@/components/leaderboard/PodiumCard";
 import { LeaderboardTable }    from "@/components/leaderboard/LeaderboardTable";
@@ -101,6 +101,39 @@ export default function LeaderboardPage() {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── WC 2026 prize banner ─────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.32, ease: "easeOut", delay: 0.06 }}
+          className={cn(
+            "relative overflow-hidden rounded-2xl border",
+            "border-warning/25 bg-gradient-to-r from-warning/[0.07] via-[#0c0f22] to-bg",
+          )}
+        >
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/35 to-transparent" />
+          <div className="flex items-start gap-3.5 px-4 py-3.5">
+            <div className="w-8 h-8 rounded-xl bg-warning/10 border border-warning/20 flex items-center justify-center flex-shrink-0">
+              <Gift size={14} className="text-warning/75" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold text-warning/75 uppercase tracking-wider">
+                  World Cup 2026 Prize
+                </span>
+                <span className="text-[9px] font-mono text-white/20 border border-white/[0.08] px-1.5 py-0.5 rounded-md">
+                  Ends 19 Jul 2026
+                </span>
+              </div>
+              <p className="text-xs text-white/55 mt-1 leading-relaxed">
+                Top <span className="text-white font-semibold">11 users</span> on this leaderboard receive the{" "}
+                <span className="text-white font-semibold">football jersey of their choice</span>.
+                Keep predicting to climb.
+              </p>
             </div>
           </div>
         </motion.div>

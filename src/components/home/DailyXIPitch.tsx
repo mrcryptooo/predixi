@@ -40,9 +40,9 @@ function PitchPlayer({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.4 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.38, ease: "backOut", delay }}
+      initial={{ opacity: 0, scale: 0.3, y: 6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.34, ease: [0.34, 1.56, 0.64, 1], delay }}
       className="flex flex-col items-center gap-[3px] select-none"
     >
       {/* Outer glow halo */}
@@ -254,7 +254,7 @@ export function DailyXIPitch({
               <PitchPlayer
                 player={player}
                 pos={XI_POSITIONS[slotIdx]}
-                delay={slotIdx * 0.045}
+                delay={slotIdx * 0.055}
               />
             </div>
           );

@@ -27,23 +27,35 @@ interface RowProps {
 }
 
 function TableRow({ entry, isCurrentUser, delay }: RowProps) {
+  const isTop5 = entry.position <= 8; // top 8 overall (positions 4-8 shown here, after podium)
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.30, ease: "easeOut", delay }}
+      transition={{ duration: 0.28, ease: "easeOut", delay }}
       className={cn(
-        "flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all duration-150",
+        "relative flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all duration-150",
         isCurrentUser
           ? "bg-primary/10 border-primary/30 shadow-[0_0_16px_rgba(22,82,240,0.10)]"
-          : "bg-gradient-to-r from-[#0b0f28] to-[#07091a] border-white/[0.07] hover:border-primary/20"
+          : isTop5
+          ? "bg-gradient-to-r from-[#0d1030] to-[#07091a] border-white/[0.10] hover:border-primary/22"
+          : "bg-gradient-to-r from-[#0b0f28] to-[#07091a] border-white/[0.07] hover:border-primary/20",
       )}
     >
+      {/* Top-5 left accent bar */}
+      {isTop5 && !isCurrentUser && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary/40" />
+      )}
+      {isCurrentUser && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
+      )}
+
       {/* Position number */}
       <div className="w-7 flex-shrink-0 text-center">
         <span className={cn(
-          "text-xs font-mono font-black",
-          isCurrentUser ? "text-primary" : "text-white/30"
+          "text-xs font-mono font-black tabular-nums",
+          isCurrentUser ? "text-primary" : isTop5 ? "text-white/55" : "text-white/25",
         )}>
           #{entry.position}
         </span>
@@ -54,7 +66,7 @@ function TableRow({ entry, isCurrentUser, delay }: RowProps) {
         "w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 border",
         isCurrentUser
           ? "border-primary/35 bg-primary/12"
-          : "border-white/[0.08] bg-white/[0.04]"
+          : "border-white/[0.08] bg-white/[0.04]",
       )}>
         {entry.avatar}
       </div>
@@ -64,7 +76,7 @@ function TableRow({ entry, isCurrentUser, delay }: RowProps) {
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={cn(
             "text-sm font-semibold truncate",
-            isCurrentUser ? "text-white font-bold" : "text-white/75"
+            isCurrentUser ? "text-white font-bold" : isTop5 ? "text-white/85" : "text-white/70",
           )}>
             {entry.displayName}
           </span>
@@ -105,7 +117,7 @@ function TableRow({ entry, isCurrentUser, delay }: RowProps) {
       <div className="text-right flex-shrink-0">
         <div className="flex items-center gap-1 text-xs font-mono font-bold justify-end">
           <Zap size={11} className="text-primary" />
-          <span className={isCurrentUser ? "text-white" : "text-white/70"}>
+          <span className={isCurrentUser ? "text-white" : isTop5 ? "text-white/80" : "text-white/65"}>
             {entry.xp.toLocaleString()}
           </span>
         </div>
@@ -133,7 +145,7 @@ export function LeaderboardTable({
           key={entry.userId}
           entry={entry}
           isCurrentUser={entry.userId.toLowerCase() === (currentUserId ?? "").toLowerCase()}
-          delay={(startIndex + i) * 0.04}
+          delay={(startIndex + i) * 0.035}
         />
       ))}
     </div>

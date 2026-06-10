@@ -39,21 +39,21 @@ export function BottomNav() {
             >
               {/* Active glow pill at top of item */}
               {active && (
-                <span className="absolute top-0 inset-x-3 h-0.5 rounded-b-full bg-primary shadow-[0_0_8px_rgba(22,82,240,0.6)]" />
+                <span className="absolute top-0 inset-x-2 h-[3px] rounded-b-full bg-primary shadow-[0_0_10px_rgba(22,82,240,0.75),0_0_4px_rgba(22,82,240,0.50)]" />
               )}
 
               <Icon
                 size={20}
                 strokeWidth={active ? 2.5 : 1.75}
                 className={cn(
-                  "transition-transform duration-150",
-                  active && "-translate-y-px"
+                  "transition-all duration-150",
+                  active ? "-translate-y-px drop-shadow-[0_0_6px_rgba(22,82,240,0.6)]" : "",
                 )}
               />
 
               <span className={cn(
-                "text-[10px] font-medium leading-none transition-colors duration-150",
-                active ? "text-primary" : "text-text-muted"
+                "text-[10px] leading-none transition-all duration-150",
+                active ? "text-primary font-bold" : "text-text-muted font-medium",
               )}>
                 {label}
               </span>

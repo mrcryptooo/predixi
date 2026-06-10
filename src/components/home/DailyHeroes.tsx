@@ -74,8 +74,7 @@ import { DailyXIPitch } from "@/components/home/DailyXIPitch";
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPIN_TICKS    = 20;   // total ticks before settling
-const TICK_MS       = 90;   // ms per tick — 90ms is more reliable across React render cycles
+const SPIN_TICKS    = 22;   // total ticks before settling (deceleration spread across 22)
 const OFFSETS       = [-2, -1, 0, 1, 2] as const;
 // Cap animation carousel to a compact subset for smooth rendering.
 // Winner is chosen from the FULL position pool (hundreds of players);
@@ -213,10 +212,13 @@ function Carousel({
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={`${player.id}-${tickerIdx}-c`}
-                  initial={{ x: spinning ? 20 : 0, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -20, opacity: 0 }}
-                  transition={{ duration: 0.07, ease: "easeOut" }}
+                  initial={{ x: spinning ? 14 : 0, opacity: 0, scale: spinning ? 0.95 : 0.75 }}
+                  animate={{ x: 0, opacity: 1, scale: 1 }}
+                  exit={{ x: spinning ? -14 : 0, opacity: 0, scale: spinning ? 0.95 : 0.9 }}
+                  transition={spinning
+                    ? { duration: 0.065, ease: "easeOut" }
+                    : { duration: 0.32, ease: [0.34, 1.56, 0.64, 1] }
+                  }
                   className="flex flex-col items-center gap-1"
                 >
                   <div className="w-14 h-14 rounded-full overflow-hidden border border-white/[0.10]">
@@ -280,10 +282,16 @@ function SlotStrip({ slots, nextIdx }: { slots: (DailyXIPlayer | null)[]; nextId
               filled ? "text-primary" : isNext ? "text-primary/70" : "text-white/20",
             )}>{pos}</span>
             {filled && slots[i] ? (
-              <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary/40 shadow-[0_0_8px_rgba(22,82,240,0.35)]">
+              <motion.div
+                key={`slot-${i}-filled`}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.28, ease: [0.34, 1.56, 0.64, 1] }}
+                className="w-9 h-9 rounded-full overflow-hidden border-2 border-primary/40 shadow-[0_0_8px_rgba(22,82,240,0.35)]"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={slots[i]!.image} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-              </div>
+              </motion.div>
             ) : (
               <div className={cn(
                 "w-9 h-9 rounded-full border",
@@ -325,7 +333,7 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
 
   // Stable refs — these never go stale inside the interval closure
   const stablePoolRef   = useRef<DailyXIPlayer[]>([]);
-  const intervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Synchronous guard to prevent double-spin before React commits spinning:true.
   // Without this, a fast second click during the 32ms setTimeout delay could start
   // a second spin because spinning state hasn't committed yet.
@@ -400,7 +408,7 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   useEffect(() => { rebuildDisplay(); }, [rebuildDisplay]);
 
   // Cleanup
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+  useEffect(() => () => { if (intervalRef.current) clearTimeout(intervalRef.current); }, []);
 
   const handleSpin = () => {
     // Hard guard: reject if any interval is still alive or already spinning.
@@ -428,41 +436,45 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
     setSpinRunId(nextRunId);
     setSpinning(true);
 
+    // Deceleration profile: fast start → gradual slowdown → dramatic settle
+    function getTickDelay(tick: number): number {
+      if (tick < 12) return 72;    // fast:   12 × 72ms  = 864ms
+      if (tick < 16) return 108;   // medium:  4 × 108ms = 432ms
+      if (tick < 19) return 170;   // slow:    3 × 170ms = 510ms
+      return 260;                  // settle:  3 × 260ms = 780ms  → total ≈ 2.6s
+    }
+
     // Small delay so React commits the above state (avoids first-tick animation skip)
     setTimeout(() => {
-      // Double-check no interval crept in during the delay
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) clearTimeout(intervalRef.current);
 
       let ticks = 0;
-      intervalRef.current = setInterval(() => {
+
+      function runTick() {
         ticks++;
         setTickerIdx(prev => (prev + 1) % stablePoolRef.current.length);
 
         if (ticks >= SPIN_TICKS) {
-          clearInterval(intervalRef.current!);
           intervalRef.current    = null;
-          isSpinActiveRef.current = false;   // ← release guard so next spin can start
+          isSpinActiveRef.current = false;
           setJustPicked(finalPlayer);
 
-          // Build next slots using ref (avoids stale closure inside setSlots updater)
           const nextSlots = [...slotsRef.current];
           nextSlots[capturedNextIdx] = finalPlayer;
-
-          // 1. Save to localStorage immediately — always the source of truth
           saveTodayXI(nextSlots);
-
-          // 2. Update React state
-          // Remote save is deferred — only happens on final submit after all 11 are filled.
           setSlots(nextSlots);
-
           setSpinning(false);
+        } else {
+          intervalRef.current = setTimeout(runTick, getTickDelay(ticks));
         }
-      }, TICK_MS);
+      }
+
+      intervalRef.current = setTimeout(runTick, getTickDelay(0));
     }, 32); // one double-rAF gap — enough for React to paint first frame
   };
 
   const handleReset = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (intervalRef.current) clearTimeout(intervalRef.current);
     intervalRef.current     = null;
     isSpinActiveRef.current = false;   // ← release guard on reset
     clearTodayXI();

@@ -6,12 +6,13 @@ import { useState, useEffect, useRef, memo } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
-  Zap, Flame, Target, ArrowRight, Globe, Shield,
+  Zap, Flame, Target, ArrowRight, Shield,
   MapPin, Clock, Anchor,
 } from "lucide-react";
 import { useAccount }      from "wagmi";
-import { DailyHeroes }        from "@/components/home/DailyHeroes";
-import { CinematicIntro }     from "@/components/home/CinematicIntro";
+import { DailyHeroes }                from "@/components/home/DailyHeroes";
+import { CinematicIntro }            from "@/components/home/CinematicIntro";
+import { WorldCupCompetitionCard }   from "@/components/home/WorldCupCompetitionCard";
 
 // Lazy-load leaderboard — below fold, not critical for LCP
 const MiniLeaderboard = dynamic(
@@ -230,45 +231,6 @@ function HomeMatchRow({ match, delay }: { match: Match; delay: number }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// World Cup teaser
-// ─────────────────────────────────────────────────────────────────────────────
-
-const WC_DATE = new Date("2026-06-11T18:00:00Z");
-const WC_DIFF_DAYS = Math.max(0, Math.floor((WC_DATE.getTime() - Date.now()) / 86_400_000));
-
-const WorldCupTeaser = memo(function WorldCupTeaser() {
-  const diffDays = WC_DIFF_DAYS;
-  return (
-    <Link href="/world-cup">
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.38, ease: "easeOut", delay: 0.22 }}
-        className={cn(
-          "group relative overflow-hidden rounded-2xl",
-          "border border-primary/25 hover:border-primary/50",
-          "bg-gradient-to-r from-primary/12 via-[#080d28] to-bg",
-          "flex items-center gap-4 px-5 py-4 transition-all duration-200"
-        )}
-      >
-        <div className="absolute -left-10 top-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-primary opacity-[0.07] blur-2xl pointer-events-none" />
-        <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center flex-shrink-0">
-          <Globe size={18} className="text-primary" />
-        </div>
-        <div className="flex-1 min-w-0 relative z-10">
-          <p className="text-sm font-bold text-white leading-tight">FIFA World Cup 2026</p>
-          <p className="text-[11px] text-white/40 font-mono mt-0.5">USA · Canada · Mexico · 104 matches</p>
-        </div>
-        <div className="text-right flex-shrink-0 relative z-10">
-          <p className="text-2xl font-mono font-black text-white tabular-nums leading-none">{diffDays}</p>
-          <p className="text-[9px] text-primary font-mono font-semibold uppercase tracking-wider mt-0.5">days</p>
-        </div>
-        <ArrowRight size={15} className="text-primary/40 group-hover:text-primary transition-colors flex-shrink-0 relative z-10" />
-      </motion.div>
-    </Link>
-  );
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
@@ -555,10 +517,14 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── 5. WORLD CUP TEASER ──────────────────────────────────────────── */}
+        {/* ── 5. WORLD CUP COMPETITION ─────────────────────────────────────── */}
         <section aria-label="World Cup 2026">
           <SectionHeader title="World Cup 2026" href="/world-cup" linkLabel="Explore" />
-          <WorldCupTeaser />
+          <WorldCupCompetitionCard
+            rank={profile?.rank ?? null}
+            xp={profile?.xp ?? null}
+            streak={profile?.streak ?? null}
+          />
         </section>
 
         {/* ── 6. TOP PREDICTORS ────────────────────────────────────────────── */}
