@@ -314,6 +314,15 @@ export function MatchCard({
 
           )}
 
+          {/* ── View Details link ────────────────────────────────────────── */}
+          <Link
+            href={`/matches/${match.id}`}
+            className="flex items-center justify-center gap-1 text-[10px] font-mono text-white/20 hover:text-white/45 transition-colors duration-150 pt-0.5"
+          >
+            View Details
+            <ArrowRight size={9} />
+          </Link>
+
         </div>
       </div>
     </motion.div>
