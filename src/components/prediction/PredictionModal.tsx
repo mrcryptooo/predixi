@@ -465,9 +465,9 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                       undefined
                     }
                     communityPct={
-                      outcome === "home" ? match.community.home :
-                      outcome === "away" ? match.community.away :
-                      match.community.draw
+                      outcome === "home" ? (match.community?.home ?? null) :
+                      outcome === "away" ? (match.community?.away ?? null) :
+                      (match.community?.draw ?? null)
                     }
                     selected={selected === outcome}
                     disabled={isLocked}

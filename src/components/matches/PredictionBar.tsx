@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { CommunityPredictions } from "@/types";
 
 interface PredictionBarProps {
-  community: CommunityPredictions;
+  community: CommunityPredictions | null;
   homeLabel?: string;
   awayLabel?: string;
   className?: string;
@@ -20,6 +20,15 @@ export function PredictionBar({
   userPick,
   className,
 }: PredictionBarProps) {
+  if (!community) {
+    return (
+      <div className={cn("space-y-1.5", className)}>
+        <div className="h-2 rounded-full bg-white/[0.06]" />
+        <p className="text-[10px] text-white/20 font-mono text-center">No community picks yet</p>
+      </div>
+    );
+  }
+
   const { home, draw, away } = community;
 
   const segments = [

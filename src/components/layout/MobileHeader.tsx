@@ -66,10 +66,6 @@ export function MobileHeader({ className }: MobileHeaderProps) {
       {/* Wallet connect — compact */}
       <ConnectWallet compact />
 
-      {/* Demo pill */}
-      <span className="text-[9px] font-mono font-bold text-text-muted border border-border px-2 py-0.5 rounded-md">
-        DEMO
-      </span>
 
       </div>{/* end header content row */}
     </header>

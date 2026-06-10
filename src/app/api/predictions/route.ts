@@ -242,9 +242,9 @@ export async function POST(req: NextRequest) {
         away_score:       mock.awayScore,
         matchday:         mock.matchday,
         venue:            mock.venue,
-        community_home:   mock.community.home,
-        community_draw:   mock.community.draw,
-        community_away:   mock.community.away,
+        community_home:   mock.community?.home ?? null,
+        community_draw:   mock.community?.draw ?? null,
+        community_away:   mock.community?.away ?? null,
       })
 
       if (matchErr && matchErr.code !== '23505') {

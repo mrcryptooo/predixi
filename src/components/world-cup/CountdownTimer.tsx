@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Globe, MapPin } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// World Cup 2026 — 11 June 2026 00:00 UTC
+// World Cup 2026 Final — 19 July 2026 18:00 UTC
 // ─────────────────────────────────────────────────────────────────────────────
-const WC_START = new Date("2026-06-11T00:00:00Z").getTime();
+const WC_FINAL = new Date("2026-07-19T18:00:00Z").getTime();
 
 interface TimeLeft {
   days:    number;
@@ -17,7 +17,7 @@ interface TimeLeft {
 }
 
 function calc(): TimeLeft {
-  const diff = Math.max(0, WC_START - Date.now());
+  const diff = Math.max(0, WC_FINAL - Date.now());
   return {
     days:    Math.floor(diff / 86_400_000),
     hours:   Math.floor((diff % 86_400_000) / 3_600_000),
@@ -140,8 +140,8 @@ export function CountdownTimer({ className }: CountdownTimerProps) {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[9px] font-mono font-bold bg-warning/15 text-warning border border-warning/25 px-2 py-1 rounded-lg">
-              DEMO DATA
+            <span className="text-[9px] font-mono font-bold bg-success/15 text-success border border-success/25 px-2 py-1 rounded-lg">
+              LIVE
             </span>
           </div>
         </div>

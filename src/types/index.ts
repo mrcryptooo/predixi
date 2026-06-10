@@ -65,7 +65,7 @@ export type Match = {
   status: MatchStatus;
   homeScore: number | null;
   awayScore: number | null;
-  community: CommunityPredictions;
+  community: CommunityPredictions | null;
   matchday: number;
   venue: string;
 };

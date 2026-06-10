@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 // ─────────────────────────────────────────────────────────────────────────────
 // World Cup 2026 opens June 11 2026 (UTC)
 // ─────────────────────────────────────────────────────────────────────────────
-const WC_START = new Date("2026-06-11T00:00:00Z").getTime();
+const WC_FINAL = new Date("2026-07-19T18:00:00Z").getTime();
 
 interface TimeLeft {
   days: number;
@@ -18,7 +18,7 @@ interface TimeLeft {
 }
 
 function getTimeLeft(): TimeLeft {
-  const diff = Math.max(0, WC_START - Date.now());
+  const diff = Math.max(0, WC_FINAL - Date.now());
   const days    = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -105,9 +105,8 @@ export function CountdownPreview({ className }: CountdownPreviewProps) {
           </div>
         </div>
 
-        {/* DEMO badge */}
-        <span className="flex-shrink-0 text-[9px] font-mono font-bold bg-warning/15 text-warning border border-warning/25 px-2 py-0.5 rounded-md">
-          DEMO
+        <span className="flex-shrink-0 text-[9px] font-mono font-bold bg-success/15 text-success border border-success/25 px-2 py-0.5 rounded-md">
+          LIVE
         </span>
       </div>
 

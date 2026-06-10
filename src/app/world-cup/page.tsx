@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Trophy, Info, Shield, Zap, Link2, FileText } from "lucide-react";
-import { worldCupGroups, worldCupFixtures } from "@/data/worldcup";
+import { worldCupGroups } from "@/data/worldcup";
 import { cn } from "@/lib/utils";
 import { CountdownTimer } from "@/components/world-cup/CountdownTimer";
 import { WorldCupFixtureCard } from "@/components/world-cup/WorldCupFixtureCard";
@@ -417,8 +417,6 @@ export default function WorldCupPage() {
       .catch(() => {});
   }, []);
 
-  const mockGroupFixtures = worldCupFixtures.filter(f => f.stage === "group");
-
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans relative overflow-hidden">
       {/* Cinematic WC page background */}
@@ -443,7 +441,7 @@ export default function WorldCupPage() {
               <div>
                 <h1 className="text-2xl font-black text-white leading-tight">World Cup 2026</h1>
                 <p className="text-xs text-white/35 font-mono">
-                  {dataSource === "live" ? "Base App-ready · Live Data" : "Base App-ready · Demo tournament data"}
+                  {dataSource === "live" ? "Base App-ready · Live Data" : "Base App-ready · Loading data…"}
                 </p>
               </div>
             </div>
@@ -462,7 +460,7 @@ export default function WorldCupPage() {
 
         {/* ── Countdown ─────────────────────────────────────────────────────── */}
         <section>
-          <SectionHeader title="Countdown to Kick-Off" />
+          <SectionHeader title="Countdown to the Final" sub="World Cup Final · 19 Jul 2026" />
           <CountdownTimer />
         </section>
 
@@ -564,15 +562,11 @@ export default function WorldCupPage() {
                 {wcMatches.map((m, i) => <RealWcRow key={m.id} m={m} delay={i * 0.02} />)}
               </div>
             </>
-          ) : mockGroupFixtures.length > 0 && (
-            <>
-              <SectionHeader title="Group Stage Fixtures (Demo)" sub="Demo schedule only · Not official FIFA data" />
-              <div className="space-y-2">
-                {mockGroupFixtures.map((fixture, i) => (
-                  <WorldCupFixtureCard key={fixture.id} fixture={fixture} delay={i * 0.03} />
-                ))}
-              </div>
-            </>
+          ) : (
+            <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-white/40">Live fixtures will appear here</p>
+              <p className="text-[11px] text-white/20 font-mono mt-1.5">Group stage is underway · Data syncs automatically</p>
+            </div>
           )}
         </section>
 

@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarDays, Info } from "lucide-react";
-import { matches as mockMatches } from "@/data/matches";
 import { leagues } from "@/data/leagues";
 import { usePredictionStore } from "@/store/usePredictionStore";
 import { MatchCard } from "@/components/matches/MatchCard";
@@ -54,7 +53,7 @@ function apiToMatch(m: Record<string, unknown>): Match {
     awayScore: m.awayScore as number | null,
     matchday:  (m.matchday as number) ?? 0,
     venue:     (m.venue as string) ?? "",
-    community: { home: 33, draw: 34, away: 33 },
+    community: null,
   };
 }
 
@@ -80,7 +79,7 @@ export default function MatchesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeModal,  setActiveModal]  = useState<Match | null>(null);
   const [pageTab,      setPageTab]      = useState<"fixtures" | "standings">("fixtures");
-  const [matches,      setMatches]      = useState<Match[]>(mockMatches);
+  const [matches,      setMatches]      = useState<Match[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [dataSource,   setDataSource]   = useState<"live" | "fallback">("fallback");
 
@@ -99,7 +98,7 @@ export default function MatchesPage() {
           setDataSource("live");
         }
       })
-      .catch(() => { /* keep mock */ })
+      .catch(() => { /* leave empty */ })
       .finally(() => setLoading(false));
   }, []);
 
@@ -156,7 +155,7 @@ export default function MatchesPage() {
                       Matches
                     </h1>
                     <p className="text-[11px] text-white/35 font-mono mt-0.5">
-                      {loading ? "Loading…" : dataSource === "live" ? "Base App · Live Data" : "Base App · Demo Data"}
+                      {loading ? "Loading…" : "Base App · Live Data"}
                     </p>
                   </div>
 
@@ -279,11 +278,36 @@ export default function MatchesPage() {
                 ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
                 : "text-white/30 border-white/10 bg-white/[0.03]"
             )}>
-              {loading ? "…" : dataSource === "live" ? "Live Data" : "Demo Data"}
+              {loading ? "…" : dataSource === "live" ? "Live Data" : "Offline"}
             </span>
           </div>
 
           {/* ── Match grid ────────────────────────────────────────────────── */}
+          {loading && matches.length === 0 ? (
+            <div className="space-y-3">
+              {[0,1,2,3].map(i => (
+                <div key={i} className="rounded-3xl border border-white/[0.07] bg-gradient-to-b from-[#0b0f2a] to-[#060810] p-5 animate-pulse">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="h-3 w-28 bg-white/[0.07] rounded-full" />
+                    <div className="h-5 w-14 bg-white/[0.07] rounded-lg" />
+                  </div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-white/[0.07] rounded-xl flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3.5 w-16 bg-white/[0.07] rounded-full" />
+                    </div>
+                    <div className="w-14 h-9 bg-white/[0.07] rounded-xl flex-shrink-0" />
+                    <div className="flex-1 space-y-2 flex flex-col items-end">
+                      <div className="h-3.5 w-16 bg-white/[0.07] rounded-full" />
+                    </div>
+                    <div className="w-12 h-12 bg-white/[0.07] rounded-xl flex-shrink-0" />
+                  </div>
+                  <div className="h-px bg-white/[0.04] mb-4" />
+                  <div className="h-8 bg-white/[0.05] rounded-2xl" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <AnimatePresence mode="wait">
             {sorted.length === 0 ? (
 
@@ -347,13 +371,14 @@ export default function MatchesPage() {
 
             )}
           </AnimatePresence>
+          )} {/* end loading/content ternary */}
 
           </> /* end fixtures tab */}
 
           {/* ── Footer ────────────────────────────────────────────────────── */}
           <footer className="text-center pb-6 pt-2">
             <p className="text-[10px] text-white/15 font-mono tracking-[0.14em] uppercase">
-              PrediXI · Matches · Demo Data
+              PrediXI · Matches · Base App
             </p>
           </footer>
 

@@ -40,7 +40,7 @@ interface OutcomeButtonProps {
   outcome:      MatchOutcome;
   /** Override label — pass team short name for home/away */
   teamLabel?:   string;
-  communityPct: number;
+  communityPct?: number | null;
   selected:     boolean;
   disabled?:    boolean;
   onClick:      () => void;
@@ -101,12 +101,12 @@ export function OutcomeButton({
           <motion.div
             className={cn("h-full rounded-full", cfg.barClass)}
             initial={{ width: 0 }}
-            animate={{ width: `${communityPct}%` }}
+            animate={{ width: communityPct != null ? `${communityPct}%` : "0%" }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           />
         </div>
         <span className="text-[10px] font-mono text-text-muted block text-center">
-          {communityPct}% community
+          {communityPct != null ? `${communityPct}% community` : "—"}
         </span>
       </div>
     </button>

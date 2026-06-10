@@ -25,56 +25,56 @@ export type DailyXIPlayer = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const PLAYER_POOL: DailyXIPlayer[] = [
-  // ── GK ──────────────────────────────────────────────────────────────────
-  { id:"gk1", name:"T. Courtois",   position:"GK", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-1.svg", styleTag:"Shot Stopper"   },
-  { id:"gk2", name:"Alisson",       position:"GK", team:"Liverpool",   teamShort:"LIV", image:"/brand/players/avatar-2.svg", styleTag:"Distributor"    },
-  { id:"gk3", name:"M. Neuer",      position:"GK", team:"Bayern",      teamShort:"FCB", image:"/brand/players/avatar-3.svg", styleTag:"Sweeper Keeper" },
+  // ── GK ── WC 2026 national team keepers ────────────────────────────────
+  { id:"gk1", name:"Alisson",          position:"GK", team:"Brazil",      teamShort:"BRA", image:"/brand/players/avatar-1.svg", styleTag:"Distributor"      },
+  { id:"gk2", name:"D. Raya",          position:"GK", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-2.svg", styleTag:"Sweeper Keeper"   },
+  { id:"gk3", name:"M. Neuer",         position:"GK", team:"Germany",     teamShort:"GER", image:"/brand/players/avatar-3.svg", styleTag:"Shot Stopper"     },
 
   // ── RB ──────────────────────────────────────────────────────────────────
-  { id:"rb1", name:"T. Arnold",     position:"RB", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-4.svg", styleTag:"Overlapping Wing" },
-  { id:"rb2", name:"D. Carvajal",   position:"RB", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-5.svg", styleTag:"Veteran Right"    },
-  { id:"rb3", name:"A. Hakimi",     position:"RB", team:"PSG",         teamShort:"PSG", image:"/brand/players/avatar-6.svg", styleTag:"Flying Wingback"  },
+  { id:"rb1", name:"T. Arnold",        position:"RB", team:"England",     teamShort:"ENG", image:"/brand/players/avatar-4.svg", styleTag:"Overlapping Wing" },
+  { id:"rb2", name:"A. Hakimi",        position:"RB", team:"Morocco",     teamShort:"MAR", image:"/brand/players/avatar-5.svg", styleTag:"Flying Wingback"  },
+  { id:"rb3", name:"D. Dumfries",      position:"RB", team:"Netherlands", teamShort:"NED", image:"/brand/players/avatar-6.svg", styleTag:"Box-to-Box Full"  },
 
   // ── CB ──────────────────────────────────────────────────────────────────
-  { id:"cb1", name:"R. Dias",       position:"CB", team:"Man City",    teamShort:"MCI", image:"/brand/players/avatar-1.svg", styleTag:"The Wall"          },
-  { id:"cb2", name:"Van Dijk",      position:"CB", team:"Liverpool",   teamShort:"LIV", image:"/brand/players/avatar-2.svg", styleTag:"Aerial Dominator"  },
-  { id:"cb3", name:"É. Militão",    position:"CB", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-3.svg", styleTag:"Ball-Playing CB"   },
-  { id:"cb4", name:"Upamecano",     position:"CB", team:"Bayern",      teamShort:"FCB", image:"/brand/players/avatar-4.svg", styleTag:"Pace & Power"      },
-  { id:"cb5", name:"A. Laporte",    position:"CB", team:"Al Nassr",    teamShort:"ALN", image:"/brand/players/avatar-5.svg", styleTag:"Left-Foot Libero"  },
-  { id:"cb6", name:"K. Koulibaly",  position:"CB", team:"Al Hilal",    teamShort:"ALH", image:"/brand/players/avatar-6.svg", styleTag:"Commanding Pres."  },
+  { id:"cb1", name:"V. van Dijk",      position:"CB", team:"Netherlands", teamShort:"NED", image:"/brand/players/avatar-1.svg", styleTag:"Aerial Dominator" },
+  { id:"cb2", name:"R. Dias",          position:"CB", team:"Portugal",    teamShort:"POR", image:"/brand/players/avatar-2.svg", styleTag:"The Wall"         },
+  { id:"cb3", name:"É. Militão",       position:"CB", team:"Brazil",      teamShort:"BRA", image:"/brand/players/avatar-3.svg", styleTag:"Ball-Playing CB"  },
+  { id:"cb4", name:"Upamecano",        position:"CB", team:"France",      teamShort:"FRA", image:"/brand/players/avatar-4.svg", styleTag:"Pace & Power"     },
+  { id:"cb5", name:"A. Laporte",       position:"CB", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-5.svg", styleTag:"Left-Foot Libero" },
+  { id:"cb6", name:"K. Koulibaly",     position:"CB", team:"Senegal",     teamShort:"SEN", image:"/brand/players/avatar-6.svg", styleTag:"Commanding Pres." },
 
   // ── LB ──────────────────────────────────────────────────────────────────
-  { id:"lb1", name:"T. Hernández",  position:"LB", team:"AC Milan",    teamShort:"ACM", image:"/brand/players/avatar-1.svg", styleTag:"Attacking Full"   },
-  { id:"lb2", name:"A. Grimaldo",   position:"LB", team:"Bayer Lev.",  teamShort:"B04", image:"/brand/players/avatar-2.svg", styleTag:"Crossing Machine" },
-  { id:"lb3", name:"A. Robertson",  position:"LB", team:"Liverpool",   teamShort:"LIV", image:"/brand/players/avatar-3.svg", styleTag:"Engine"           },
+  { id:"lb1", name:"T. Hernández",     position:"LB", team:"France",      teamShort:"FRA", image:"/brand/players/avatar-1.svg", styleTag:"Attacking Full"   },
+  { id:"lb2", name:"A. Grimaldo",      position:"LB", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-2.svg", styleTag:"Crossing Machine" },
+  { id:"lb3", name:"A. Robertson",     position:"LB", team:"Scotland",    teamShort:"SCO", image:"/brand/players/avatar-3.svg", styleTag:"Engine"           },
 
   // ── RM ──────────────────────────────────────────────────────────────────
-  { id:"rm1", name:"M. Salah",      position:"RM", team:"Liverpool",   teamShort:"LIV", image:"/brand/players/avatar-4.svg", styleTag:"Clinical Winger" },
-  { id:"rm2", name:"B. Saka",       position:"RM", team:"Arsenal",     teamShort:"ARS", image:"/brand/players/avatar-5.svg", styleTag:"Consistent Elite"},
-  { id:"rm3", name:"L. Yamal",      position:"RM", team:"Barcelona",   teamShort:"BAR", image:"/brand/players/avatar-6.svg", styleTag:"Next Gen"        },
-  { id:"rm4", name:"J. Musiala",    position:"RM", team:"Bayern",      teamShort:"FCB", image:"/brand/players/avatar-1.svg", styleTag:"Dribble Master"  },
+  { id:"rm1", name:"B. Saka",          position:"RM", team:"England",     teamShort:"ENG", image:"/brand/players/avatar-4.svg", styleTag:"Consistent Elite" },
+  { id:"rm2", name:"L. Yamal",         position:"RM", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-5.svg", styleTag:"Next Gen"         },
+  { id:"rm3", name:"J. Musiala",       position:"RM", team:"Germany",     teamShort:"GER", image:"/brand/players/avatar-6.svg", styleTag:"Dribble Master"   },
+  { id:"rm4", name:"M. Szoboszlai",    position:"RM", team:"Hungary",     teamShort:"HUN", image:"/brand/players/avatar-1.svg", styleTag:"Dynamic Runner"   },
 
   // ── CM ──────────────────────────────────────────────────────────────────
-  { id:"cm1", name:"Rodri",         position:"CM", team:"Man City",    teamShort:"MCI", image:"/brand/players/avatar-2.svg", styleTag:"Midfield Rock"  },
-  { id:"cm2", name:"K. De Bruyne",  position:"CM", team:"Man City",    teamShort:"MCI", image:"/brand/players/avatar-3.svg", styleTag:"Vision King"    },
-  { id:"cm3", name:"Pedri",         position:"CM", team:"Barcelona",   teamShort:"BAR", image:"/brand/players/avatar-4.svg", styleTag:"Technician"     },
-  { id:"cm4", name:"T. Kroos",      position:"CM", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-5.svg", styleTag:"Maestro"        },
-  { id:"cm5", name:"F. Valverde",   position:"CM", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-6.svg", styleTag:"Box-to-Box"     },
-  { id:"cm6", name:"M. Ødegaard",   position:"CM", team:"Arsenal",     teamShort:"ARS", image:"/brand/players/avatar-1.svg", styleTag:"Captain Class"  },
+  { id:"cm1", name:"Rodri",            position:"CM", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-2.svg", styleTag:"Midfield Rock"    },
+  { id:"cm2", name:"K. De Bruyne",     position:"CM", team:"Belgium",     teamShort:"BEL", image:"/brand/players/avatar-3.svg", styleTag:"Vision King"      },
+  { id:"cm3", name:"Pedri",            position:"CM", team:"Spain",       teamShort:"ESP", image:"/brand/players/avatar-4.svg", styleTag:"Technician"       },
+  { id:"cm4", name:"J. Bellingham",    position:"CM", team:"England",     teamShort:"ENG", image:"/brand/players/avatar-5.svg", styleTag:"Box-to-Box"       },
+  { id:"cm5", name:"F. Valverde",      position:"CM", team:"Uruguay",     teamShort:"URU", image:"/brand/players/avatar-6.svg", styleTag:"All-Action Mid"   },
+  { id:"cm6", name:"A. Güler",         position:"CM", team:"Türkiye",     teamShort:"TUR", image:"/brand/players/avatar-1.svg", styleTag:"Creative Spark"   },
 
   // ── LM ──────────────────────────────────────────────────────────────────
-  { id:"lm1", name:"Vinicius Jr.",  position:"LM", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-2.svg", styleTag:"Pace Monster"    },
-  { id:"lm2", name:"H-M. Son",      position:"LM", team:"Tottenham",   teamShort:"TOT", image:"/brand/players/avatar-3.svg", styleTag:"Flair Merchant"  },
-  { id:"lm3", name:"L. Díaz",       position:"LM", team:"Liverpool",   teamShort:"LIV", image:"/brand/players/avatar-4.svg", styleTag:"Electric Winger" },
-  { id:"lm4", name:"Kvaratskhelia", position:"LM", team:"PSG",         teamShort:"PSG", image:"/brand/players/avatar-5.svg", styleTag:"Unstoppable"     },
+  { id:"lm1", name:"Vinicius Jr.",     position:"LM", team:"Brazil",      teamShort:"BRA", image:"/brand/players/avatar-2.svg", styleTag:"Pace Monster"     },
+  { id:"lm2", name:"H-M. Son",         position:"LM", team:"South Korea", teamShort:"KOR", image:"/brand/players/avatar-3.svg", styleTag:"Flair Merchant"   },
+  { id:"lm3", name:"L. Díaz",          position:"LM", team:"Colombia",    teamShort:"COL", image:"/brand/players/avatar-4.svg", styleTag:"Electric Winger"  },
+  { id:"lm4", name:"Kvaratskhelia",    position:"LM", team:"Georgia",     teamShort:"GEO", image:"/brand/players/avatar-5.svg", styleTag:"Unstoppable"      },
 
   // ── ST ──────────────────────────────────────────────────────────────────
-  { id:"st1", name:"E. Haaland",    position:"ST", team:"Man City",    teamShort:"MCI", image:"/brand/players/avatar-6.svg", styleTag:"Goal Machine"    },
-  { id:"st2", name:"K. Mbappé",     position:"ST", team:"Real Madrid", teamShort:"RMA", image:"/brand/players/avatar-1.svg", styleTag:"Lightning"       },
-  { id:"st3", name:"H. Kane",       position:"ST", team:"Bayern",      teamShort:"FCB", image:"/brand/players/avatar-2.svg", styleTag:"Complete Striker" },
-  { id:"st4", name:"R. Lewandowski",position:"ST", team:"Barcelona",   teamShort:"BAR", image:"/brand/players/avatar-3.svg", styleTag:"Penalty King"    },
-  { id:"st5", name:"V. Osimhen",    position:"ST", team:"Galatasaray", teamShort:"GAL", image:"/brand/players/avatar-4.svg", styleTag:"Explosive Pace"  },
-  { id:"st6", name:"J. Álvarez",    position:"ST", team:"Atlético",    teamShort:"ATM", image:"/brand/players/avatar-5.svg", styleTag:"Engine Room ST"  },
+  { id:"st1", name:"E. Haaland",       position:"ST", team:"Norway",      teamShort:"NOR", image:"/brand/players/avatar-6.svg", styleTag:"Goal Machine"     },
+  { id:"st2", name:"K. Mbappé",        position:"ST", team:"France",      teamShort:"FRA", image:"/brand/players/avatar-1.svg", styleTag:"Lightning"        },
+  { id:"st3", name:"H. Kane",          position:"ST", team:"England",     teamShort:"ENG", image:"/brand/players/avatar-2.svg", styleTag:"Complete Striker" },
+  { id:"st4", name:"R. Lewandowski",   position:"ST", team:"Poland",      teamShort:"POL", image:"/brand/players/avatar-3.svg", styleTag:"Penalty King"     },
+  { id:"st5", name:"V. Osimhen",       position:"ST", team:"Nigeria",     teamShort:"NGA", image:"/brand/players/avatar-4.svg", styleTag:"Explosive Pace"   },
+  { id:"st6", name:"J. Álvarez",       position:"ST", team:"Argentina",   teamShort:"ARG", image:"/brand/players/avatar-5.svg", styleTag:"Engine Room ST"   },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
