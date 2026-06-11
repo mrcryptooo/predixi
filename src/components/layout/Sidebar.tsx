@@ -59,13 +59,13 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className={cn(
-      "hidden md:flex flex-col fixed left-0 top-0 h-screen w-[220px] z-40",
-      "glass-nav border-r border-border"
-    )}>
+    <aside
+      className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[220px] z-40 border-r border-white/[0.07]"
+      style={{ background: "rgba(6,8,18,0.92)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)" }}
+    >
 
       {/* ── Brand area ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-border">
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.07]">
         <SidebarLogo />
         <div className="min-w-0">
           <span className="font-black tracking-tight text-lg text-white leading-none block">
@@ -89,13 +89,13 @@ export function Sidebar() {
                 "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium",
                 "transition-all duration-150",
                 active
-                  ? "bg-primary/12 text-primary border border-primary/20 shadow-[0_0_12px_rgba(22,82,240,0.10)]"
-                  : "text-text-secondary hover:text-white hover:bg-white/5 border border-transparent"
+                  ? "bg-primary/[0.13] text-primary border border-primary/25 shadow-[0_0_16px_rgba(22,82,240,0.13)]"
+                  : "text-white/45 hover:text-white/80 hover:bg-white/[0.05] border border-transparent"
               )}
             >
               {/* Active left accent bar */}
               {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full glow-accent-bar" />
               )}
               <Icon
                 size={17}
@@ -112,8 +112,8 @@ export function Sidebar() {
       </nav>
 
       {/* ── Secondary nav ───────────────────────────────────────────────── */}
-      <div className="px-3 pb-2 border-t border-border pt-3">
-        <p className="text-[9px] font-mono text-text-muted uppercase tracking-[0.14em] px-3 mb-1.5">
+      <div className="px-3 pb-2 border-t border-white/[0.07] pt-3">
+        <p className="text-[9px] font-mono text-white/30 uppercase tracking-[0.14em] px-3 mb-1.5">
           Resources
         </p>
         {[{ href: "/docs", label: "Docs", icon: BookOpen }].map(({ href, label, icon: Icon }) => {
@@ -126,12 +126,12 @@ export function Sidebar() {
                 "relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium",
                 "transition-all duration-150",
                 active
-                  ? "bg-primary/12 text-primary border border-primary/20"
-                  : "text-text-secondary hover:text-white hover:bg-white/5 border border-transparent"
+                  ? "bg-primary/[0.13] text-primary border border-primary/25"
+                  : "text-white/45 hover:text-white/80 hover:bg-white/[0.05] border border-transparent"
               )}
             >
               {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full glow-accent-bar" />
               )}
               <Icon size={15} strokeWidth={active ? 2.5 : 2} className={cn("flex-shrink-0", active ? "text-primary" : "text-text-muted")} />
               {label}
@@ -141,7 +141,7 @@ export function Sidebar() {
       </div>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <div className="px-4 py-4 border-t border-border space-y-3">
+      <div className="px-4 py-4 border-t border-white/[0.07] space-y-3">
         {/* Wallet connect */}
         <ConnectWallet className="w-full justify-center" />
 

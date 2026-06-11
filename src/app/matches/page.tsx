@@ -189,17 +189,17 @@ export default function MatchesPage() {
           </motion.div>
 
           {/* ── Page tab: Fixtures / Standings ────────────────────────────── */}
-          <div className="flex items-center gap-2">
+          <div className="flex p-1 rounded-2xl bg-white/[0.04] border border-white/[0.07] gap-1 self-start">
             {(["fixtures", "standings"] as const).map(tab => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => setPageTab(tab)}
                 className={cn(
-                  "h-9 px-4 rounded-xl border text-xs font-bold capitalize transition-all duration-150",
+                  "h-8 px-4 rounded-xl text-xs font-bold capitalize transition-all duration-200",
                   pageTab === tab
-                    ? "bg-primary/20 border-primary/50 text-white shadow-[0_0_14px_rgba(22,82,240,0.18)]"
-                    : "bg-white/[0.04] border-white/[0.08] text-white/35 hover:border-primary/25 hover:text-white/60"
+                    ? "bg-primary/20 text-white shadow-[0_0_14px_rgba(22,82,240,0.20)] border border-primary/40"
+                    : "text-white/35 hover:text-white/60 border border-transparent"
                 )}
               >
                 {tab}
@@ -240,7 +240,7 @@ export default function MatchesPage() {
             <p className="text-[10px] font-mono text-white/25 uppercase tracking-[0.14em] px-0.5">
               Status
             </p>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex p-1 rounded-2xl bg-white/[0.04] border border-white/[0.07] gap-1 flex-wrap">
               {statusTabs.map((tab) => {
                 const isActive = tab.id === statusFilter;
                 return (
@@ -249,11 +249,11 @@ export default function MatchesPage() {
                     type="button"
                     onClick={() => setStatusFilter(tab.id)}
                     className={cn(
-                      "flex items-center gap-1.5 h-9 px-3.5 rounded-xl border",
-                      "text-xs font-semibold transition-all duration-150 whitespace-nowrap",
+                      "flex items-center gap-1.5 h-8 px-3.5 rounded-xl",
+                      "text-xs font-semibold transition-all duration-200 whitespace-nowrap",
                       isActive
-                        ? "bg-primary/15 border-primary/40 text-white shadow-[0_0_12px_rgba(22,82,240,0.14)]"
-                        : "bg-white/[0.04] border-white/[0.08] text-white/35 hover:border-primary/25 hover:text-white/60"
+                        ? "bg-primary/20 text-white shadow-[0_0_12px_rgba(22,82,240,0.18)] border border-primary/40"
+                        : "text-white/35 hover:text-white/60 border border-transparent"
                     )}
                   >
                     {tab.live && (
@@ -286,7 +286,8 @@ export default function MatchesPage() {
           {loading && matches.length === 0 ? (
             <div className="space-y-3">
               {[0,1,2,3].map(i => (
-                <div key={i} className="rounded-3xl border border-white/[0.07] bg-gradient-to-b from-[#0b0f2a] to-[#060810] p-5 animate-pulse">
+                <div key={i} className="rounded-3xl border border-white/[0.07] bg-gradient-to-b from-[#0b0f2a] to-[#060810] p-5 overflow-hidden relative">
+                  <div className="absolute inset-0 shimmer pointer-events-none" />
                   <div className="flex items-center justify-between mb-4">
                     <div className="h-3 w-28 bg-white/[0.07] rounded-full" />
                     <div className="h-5 w-14 bg-white/[0.07] rounded-lg" />

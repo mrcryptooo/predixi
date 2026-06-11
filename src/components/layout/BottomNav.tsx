@@ -19,11 +19,13 @@ export function BottomNav() {
   return (
     <nav className={cn(
       "md:hidden fixed bottom-0 inset-x-0 z-40",
-      "glass-nav border-t border-border"
-    )}>
+      "border-t border-white/[0.07]",
+    )} style={{ background: "rgba(6,8,18,0.92)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)" }}>
       {/* Mobile nav background */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/assets/backgrounds/mobile-nav-bg.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover object-bottom pointer-events-none" style={{ opacity: 0.45 }} loading="lazy" decoding="async" />
+      <img src="/assets/backgrounds/mobile-nav-bg.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover object-bottom pointer-events-none" style={{ opacity: 0.35 }} loading="lazy" decoding="async" />
+      {/* Subtle top gradient */}
+      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent pointer-events-none" />
       <div className="flex items-stretch h-[60px] relative">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -32,28 +34,33 @@ export function BottomNav() {
               key={href}
               href={href}
               className={cn(
-                "relative flex-1 flex flex-col items-center justify-center gap-0.5",
-                "transition-all duration-150 select-none",
-                active ? "text-primary" : "text-text-muted hover:text-text-secondary"
+                "relative flex-1 flex flex-col items-center justify-center gap-[3px]",
+                "transition-all duration-200 select-none",
+                active ? "text-primary" : "text-white/35 hover:text-white/60"
               )}
             >
               {/* Active glow pill at top of item */}
               {active && (
-                <span className="absolute top-0 inset-x-2 h-[3px] rounded-b-full bg-primary shadow-[0_0_10px_rgba(22,82,240,0.75),0_0_4px_rgba(22,82,240,0.50)]" />
+                <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b-full bg-gradient-to-r from-primary/60 via-primary to-primary/60 shadow-[0_0_12px_rgba(22,82,240,0.85),0_0_5px_rgba(22,82,240,0.60)]" />
+              )}
+
+              {/* Active background swatch */}
+              {active && (
+                <span className="absolute inset-x-1 inset-y-2 rounded-xl bg-primary/[0.10] pointer-events-none" />
               )}
 
               <Icon
                 size={20}
                 strokeWidth={active ? 2.5 : 1.75}
                 className={cn(
-                  "transition-all duration-150",
-                  active ? "-translate-y-px drop-shadow-[0_0_6px_rgba(22,82,240,0.6)]" : "",
+                  "relative z-10 transition-all duration-200",
+                  active ? "scale-[1.08] drop-shadow-[0_0_8px_rgba(22,82,240,0.70)]" : "",
                 )}
               />
 
               <span className={cn(
-                "text-[10px] leading-none transition-all duration-150",
-                active ? "text-primary font-bold" : "text-text-muted font-medium",
+                "relative z-10 text-[10px] leading-none font-medium transition-all duration-200",
+                active ? "text-primary font-bold tracking-wide" : "",
               )}>
                 {label}
               </span>

@@ -93,11 +93,11 @@ function HeroLogo() {
 
 const StatPill = memo(function StatPill({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.06] border border-white/[0.10]">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl glass-inner backdrop-blur-sm">
       <span className="text-primary flex-shrink-0">{icon}</span>
       <div>
         <p className="text-xs font-mono font-black text-white tabular-nums leading-none">{value}</p>
-        <p className="text-[9px] font-mono text-white/45 leading-none mt-0.5 uppercase tracking-wide">{label}</p>
+        <p className="text-[9px] font-mono text-white/40 leading-none mt-0.5 uppercase tracking-wide">{label}</p>
       </div>
     </div>
   );
@@ -110,10 +110,13 @@ const StatPill = memo(function StatPill({ icon, value, label }: { icon: React.Re
 const SectionHeader = memo(function SectionHeader({ title, href, linkLabel = "View all" }: { title: string; href?: string; linkLabel?: string }) {
   return (
     <div className="flex items-center gap-3 mb-4">
-      <span className="w-[3px] h-5 rounded-full bg-primary flex-shrink-0" />
-      <h2 className="text-[11px] font-bold text-white/50 uppercase tracking-[0.14em] flex-1">{title}</h2>
+      <span className="w-[3px] h-[18px] rounded-full flex-shrink-0 glow-accent-bar" />
+      <h2 className="text-[11px] font-bold text-white/60 uppercase tracking-[0.14em] flex-1">{title}</h2>
       {href && (
-        <Link href={href} className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-white transition-colors duration-150">
+        <Link href={href} className={cn(
+          "flex items-center gap-1 text-[11px] font-semibold",
+          "text-primary/75 hover:text-primary transition-colors duration-200"
+        )}>
           {linkLabel}<ArrowRight size={11} />
         </Link>
       )}
@@ -149,8 +152,8 @@ function HomeMatchRow({ match, delay }: { match: Match; delay: number }) {
           "relative overflow-hidden rounded-2xl border transition-all duration-200",
           "bg-gradient-to-b from-[#0b0f2a] to-[#060810]",
           isLive
-            ? "border-primary/40 shadow-[0_0_20px_rgba(22,82,240,0.12)]"
-            : "border-white/[0.07] hover:border-primary/25",
+            ? "border-primary/40 shadow-[0_0_24px_rgba(22,82,240,0.14)]"
+            : "border-white/[0.07] hover:border-primary/30 hover:bg-primary/[0.03]",
         )}>
           {isLive && <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />}
 

@@ -143,7 +143,7 @@ export default function LeaderboardPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.30, ease: "easeOut", delay: 0.06 }}
-          className="flex gap-2"
+          className="flex p-1 rounded-2xl bg-white/[0.04] border border-white/[0.07] gap-1 self-start"
         >
           {periodTabs.map((tab) => {
             const isActive = tab.id === period;
@@ -153,10 +153,10 @@ export default function LeaderboardPage() {
                 type="button"
                 onClick={() => setPeriod(tab.id)}
                 className={cn(
-                  "h-9 px-4 rounded-xl border text-xs font-semibold transition-all duration-150",
+                  "h-8 px-4 rounded-xl text-xs font-semibold transition-all duration-200",
                   isActive
-                    ? "bg-primary/15 border-primary/40 text-white shadow-[0_0_12px_rgba(22,82,240,0.14)]"
-                    : "bg-white/[0.04] border-white/[0.08] text-white/35 hover:border-primary/25 hover:text-white/60"
+                    ? "bg-primary/20 text-white shadow-[0_0_14px_rgba(22,82,240,0.20)] border border-primary/40"
+                    : "text-white/35 hover:text-white/60 border border-transparent"
                 )}
               >
                 {tab.label}

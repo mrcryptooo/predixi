@@ -128,7 +128,7 @@ interface AccentBarProps {
 }
 
 const accentBarColors: Record<NonNullable<AccentBarProps["color"]>, string> = {
-  primary: "bg-primary",
+  primary: "glow-accent-bar",
   cyan:    "bg-cyan",
   purple:  "bg-purple",
   success: "bg-success",
@@ -139,7 +139,7 @@ const accentBarColors: Record<NonNullable<AccentBarProps["color"]>, string> = {
 export function AccentBar({ color = "primary" }: AccentBarProps) {
   return (
     <span className={cn(
-      "w-1 h-5 rounded-full flex-shrink-0",
+      "w-[3px] h-[18px] rounded-full flex-shrink-0",
       accentBarColors[color]
     )} />
   );

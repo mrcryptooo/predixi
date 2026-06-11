@@ -19,11 +19,12 @@ export function MobileHeader({ className }: MobileHeaderProps) {
   const [imgFailed, setImgFailed] = useState(false);
 
   return (
-    <header className={cn(
-      "md:hidden fixed top-0 inset-x-0 z-40",
-      "glass-nav border-b border-border",
-      className
-    )}>
+    <header
+      className={cn("md:hidden fixed top-0 inset-x-0 z-40 border-b border-white/[0.07]", className)}
+      style={{ background: "rgba(6,8,18,0.90)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)" }}
+    >
+      {/* Bottom edge glow */}
+      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/15 to-transparent pointer-events-none" />
       {/* Status-bar safe-area spacer — fills the notch/dynamic island area
           in Base App / Coinbase Wallet embedded webview on notched iPhones.
           Zero height on non-notched devices and desktop. */}
