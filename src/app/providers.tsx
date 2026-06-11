@@ -10,6 +10,7 @@ import { logBaseAppContext, wasIntentionallyDisconnected } from '@/lib/base-app'
 import { isShareSupported }                                from '@/lib/base-app-actions'
 import { useReferralCapture }                              from '@/hooks/useReferralCapture'
 import { useMiniApp }                                      from '@/hooks/useMiniApp'
+import { ReferralSuccessToast }                            from '@/components/ui/ReferralSuccessToast'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // App-wide side effects that need wagmi context
@@ -19,7 +20,7 @@ import { useMiniApp }                                      from '@/hooks/useMini
 function AppEffects() {
   useReferralCapture()
   useMiniApp()   // calls sdk.actions.ready() — dismisses Base Mini App splash screen
-  return null
+  return <ReferralSuccessToast />
 }
 
 export function Providers({ children }: { children: ReactNode }) {

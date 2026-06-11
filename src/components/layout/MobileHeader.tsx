@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
+import { BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -61,6 +63,15 @@ export function MobileHeader({ className }: MobileHeaderProps) {
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Docs */}
+      <Link
+        href="/docs"
+        aria-label="Documentation"
+        className="flex items-center justify-center w-8 h-8 rounded-lg text-white/40 hover:text-white/70 transition-colors"
+      >
+        <BookOpen size={18} />
+      </Link>
 
       {/* Notifications */}
       <NotificationBell />

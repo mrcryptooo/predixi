@@ -6,8 +6,8 @@ import { useState, useEffect, useRef, memo } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
-  Zap, Flame, Target, ArrowRight, Shield,
-  MapPin, Clock, Anchor,
+  Zap, ArrowRight,
+  MapPin, Clock,
 } from "lucide-react";
 import { useAccount }      from "wagmi";
 import { DailyHeroes }                from "@/components/home/DailyHeroes";
@@ -19,7 +19,6 @@ const MiniLeaderboard = dynamic(
   () => import("@/components/leaderboard/MiniLeaderboard").then(m => ({ default: m.MiniLeaderboard })),
   { ssr: false, loading: () => <p className="text-xs text-white/25 font-mono px-1 py-4">Loading…</p> },
 );
-import { RankBadge }       from "@/components/ui/Badge";
 import { TeamLogo }        from "@/components/ui/TeamLogo";
 import { LeagueLogo }      from "@/components/ui/LeagueLogo";
 import { cn }              from "@/lib/utils";
@@ -52,6 +51,7 @@ function apiToMatch(m: Record<string, unknown>): Match {
     community: { home: 33, draw: 34, away: 33 },
   };
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -86,22 +86,6 @@ function HeroLogo() {
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// StatPill
-// ─────────────────────────────────────────────────────────────────────────────
-
-const StatPill = memo(function StatPill({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-xl glass-inner backdrop-blur-sm">
-      <span className="text-primary flex-shrink-0">{icon}</span>
-      <div>
-        <p className="text-xs font-mono font-black text-white tabular-nums leading-none">{value}</p>
-        <p className="text-[9px] font-mono text-white/40 leading-none mt-0.5 uppercase tracking-wide">{label}</p>
-      </div>
-    </div>
-  );
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SectionHeader
@@ -271,10 +255,6 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
-  const xp        = profile?.xp       ?? 0;
-  const streak    = profile?.streak   ?? 0;
-  const accuracy  = profile?.accuracy ?? 0;
-  const truncAddr = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
   const liveCount = matches.filter(m => m.status === "live").length;
 
   const matchSectionTitle = liveCount > 0
@@ -357,41 +337,6 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="h-px bg-white/[0.06] mb-5" />
-
-              {/* User identity / connect prompt */}
-              {isConnected && truncAddr ? (
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#4d7ef7] flex items-center justify-center text-xl flex-shrink-0 shadow-lg">
-                    ⚡
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-white leading-none font-mono">{truncAddr}</span>
-                      <RankBadge rank={profile?.rank as "bronze" | "silver" | "gold" | "platinum" | "diamond" ?? "bronze"} size="xs" />
-                    </div>
-                    <p className="text-[10px] text-white/30 font-mono mt-1">
-                      {profile ? `${profile.totalPredictions} predictions · ${profile.correctPredictions} correct` : "Loading…"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                    <StatPill icon={<Zap size={11} />}    value={xp.toLocaleString()} label="XP"     />
-                    <StatPill icon={<Flame size={11} />}  value={`${streak}`}          label="Streak" />
-                    <StatPill icon={<Target size={11} />} value={`${accuracy}%`}       label="Acc"    />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/[0.10] flex items-center justify-center flex-shrink-0">
-                    <Shield size={18} className="text-white/20" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-white/50">Connect wallet</p>
-                    <p className="text-[10px] text-white/25 font-mono mt-0.5">Track your predictions &amp; earn XP</p>
-                  </div>
-                </div>
-              )}
-
               {/* CTAs */}
               <div className="flex gap-2.5 mt-5 flex-wrap">
                 <Link
@@ -432,70 +377,7 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* ── 3. ONCHAIN PROOF ─────────────────────────────────────────────── */}
-        <section aria-label="Predictions recorded on Base">
-          <SectionHeader title="On Base" href="/profile" linkLabel="View record" />
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.38, ease: "easeOut", delay: 0.15 }}
-            className={cn(
-              "relative overflow-hidden rounded-2xl border border-primary/25",
-              "bg-gradient-to-br from-primary/10 via-[#060c24] to-[#040710]",
-            )}
-          >
-            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-            <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-primary opacity-[0.07] blur-2xl pointer-events-none" />
-
-            <div className="relative z-10 px-5 py-5">
-              <div className="flex items-start gap-4">
-                <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5",
-                  "bg-primary/15 border border-primary/25",
-                  "shadow-[0_0_16px_rgba(22,82,240,0.20)]",
-                )}>
-                  <Anchor size={18} className="text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white leading-tight">
-                    Every Prediction Recorded on Base
-                  </p>
-                  <p className="text-[11px] text-white/35 mt-1.5 leading-relaxed">
-                    When you submit a prediction with a connected wallet, it is written to Base as a permanent onchain record — verifiable by anyone, forever.
-                  </p>
-                  <p className="text-[9px] font-mono text-white/20 mt-1.5">
-                    Requires wallet · Small Base network fee
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 mt-4 pt-4 border-t border-white/[0.06] flex-wrap">
-                <Link
-                  href="/matches"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-bold",
-                    "bg-primary text-white shadow-[0_4px_16px_rgba(22,82,240,0.35)]",
-                    "hover:opacity-90 transition-all duration-150 active:scale-[0.97]",
-                  )}
-                >
-                  <Zap size={11} /> Make a Prediction
-                </Link>
-                <Link
-                  href="/profile"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold",
-                    "border border-primary/35 text-primary/80",
-                    "hover:border-primary hover:bg-primary/10 transition-all duration-150 active:scale-[0.97]",
-                  )}
-                >
-                  <Anchor size={11} /> View Record
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        </section>
-
-        {/* ── 4. LIVE / UPCOMING MATCHES ──────────────────────────────────── */}
+        {/* ── 3. LIVE / UPCOMING MATCHES ──────────────────────────────────── */}
         <section aria-label="Live and upcoming matches">
           <SectionHeader title={matchSectionTitle} href="/matches" linkLabel="All matches" />
           <div className="space-y-2">

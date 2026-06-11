@@ -121,6 +121,7 @@ export function useReferralCapture(): void {
           // 'registered' or 'already_registered' — both are terminal states
           localStorage.removeItem(PENDING_KEY)
           if (data.status === 'registered') {
+            window.dispatchEvent(new CustomEvent('predixi:referral-registered'))
             console.info('[PrediXI] Referral registered ✓')
           }
           return

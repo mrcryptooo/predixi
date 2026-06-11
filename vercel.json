@@ -1,8 +1,12 @@
 {
   "crons": [
     {
+      "path": "/api/cron/sync-results",
+      "schedule": "0 23 * * *"
+    },
+    {
       "path": "/api/cron/auto-settle",
-      "schedule": "0 3 * * *"
+      "schedule": "30 23 * * *"
     },
     {
       "path": "/api/cron/score-daily-xi",

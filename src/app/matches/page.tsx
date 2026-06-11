@@ -74,8 +74,10 @@ const statusTabs: { id: StatusFilter; label: string; live?: boolean }[] = [
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
+const WC_ONLY = process.env.NEXT_PUBLIC_WC_ONLY === 'true'
+
 export default function MatchesPage() {
-  const [leagueFilter, setLeagueFilter] = useState<string>("all");
+  const [leagueFilter, setLeagueFilter] = useState<string>(WC_ONLY ? "world-cup-2026" : "all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeModal,  setActiveModal]  = useState<Match | null>(null);
   const [pageTab,      setPageTab]      = useState<"fixtures" | "standings">("fixtures");
@@ -213,7 +215,8 @@ export default function MatchesPage() {
           {/* ── Fixtures tab content ──────────────────────────────────────── */}
           {pageTab === "fixtures" && <>
 
-          {/* ── League filter ─────────────────────────────────────────────── */}
+          {/* ── League filter (hidden in WC-only mode) ─────────────────── */}
+          {!WC_ONLY && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -229,6 +232,7 @@ export default function MatchesPage() {
               onChange={setLeagueFilter}
             />
           </motion.div>
+          )}
 
           {/* ── Status filter ─────────────────────────────────────────────── */}
           <motion.div
