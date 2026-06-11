@@ -181,7 +181,7 @@ export default function MatchesPage() {
                 )}>
                   <Info size={11} className="text-white/25 flex-shrink-0" />
                   <p className="text-[11px] text-white/30 font-mono leading-relaxed">
-                    Predictions are saved securely. Anchor on Base to create an immutable on-chain proof.
+                    Predictions are saved to your wallet and scored after each match.
                   </p>
                 </div>
               </div>

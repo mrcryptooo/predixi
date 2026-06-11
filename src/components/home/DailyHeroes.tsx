@@ -499,8 +499,7 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
       // saveDailyXIRemote throws on any failure with the actual server reason
       const { commitmentHash: newHash } = await saveDailyXIRemote(address, slots as DailyXIPlayer[], undefined, { message, signature });
       setSubmitted(true);
-      // Optimistically surface the commitmentHash from the POST response
-      // so the Anchor on Base button appears immediately without waiting for the meta refetch.
+      // Optimistically update entry meta from the POST response before the full refetch arrives.
       if (newHash) {
         setEntryMeta(prev => ({
           ...(prev ?? { status: 'pending', earnedXp: 0, projectedMaxXp: 20 }),
@@ -596,16 +595,6 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             submitted={submitted}
             isConnected={isConnected}
             submitError={submitError}
-            commitmentHash={entryMeta?.commitmentHash ?? null}
-            submittedOnchain={entryMeta?.submittedOnchain ?? false}
-            txHash={entryMeta?.txHash ?? null}
-            entryDate={new Date().toISOString().slice(0, 10)}
-            onAnchorSuccess={(anchorTxHash) => {
-              setEntryMeta(prev => prev
-                ? { ...prev, submittedOnchain: true, txHash: anchorTxHash }
-                : null
-              );
-            }}
           />
         ) : (
           <div className="space-y-3">

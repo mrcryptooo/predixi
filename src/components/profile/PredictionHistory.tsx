@@ -5,7 +5,6 @@ import { CheckCircle2, XCircle, Clock, Zap, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { LeagueLogo } from "@/components/ui/LeagueLogo";
-import { AnchorPredictionButton } from "@/components/onchain/AnchorPredictionButton";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -26,10 +25,6 @@ export interface PredictionHistoryEntry {
   awayCrest?:       string | null;
   homeShort?:       string;
   awayShort?:       string;
-  // Onchain commitment fields — present when the prediction has a commitment hash
-  commitmentHash?:  string | null;
-  submittedOnchain?: boolean;
-  txHash?:          string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,18 +32,14 @@ export interface PredictionHistoryEntry {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface HistoryRowProps {
-  entry:            PredictionHistoryEntry;
-  delay:            number;
-  onAnchorSuccess?: (predictionId: string, txHash: string) => void;
+  entry: PredictionHistoryEntry;
+  delay: number;
 }
 
-function HistoryRow({ entry, delay, onAnchorSuccess }: HistoryRowProps) {
+function HistoryRow({ entry, delay }: HistoryRowProps) {
   const isCorrect   = entry.result === "correct";
   const isIncorrect = entry.result === "incorrect";
   const isPending   = !isCorrect && !isIncorrect;
-
-  // Show the anchor row when a commitment hash exists (anchored or not yet anchored)
-  const showAnchorRow = Boolean(entry.commitmentHash);
 
   return (
     <motion.div
@@ -111,19 +102,6 @@ function HistoryRow({ entry, delay, onAnchorSuccess }: HistoryRowProps) {
           {entry.date}
         </div>
       </div>
-
-      {/* ── Anchor on Base row — only when commitment hash exists ────────── */}
-      {showAnchorRow && (
-        <div className="flex items-center justify-end pb-2.5">
-          <AnchorPredictionButton
-            predictionId={entry.id}
-            commitmentHash={entry.commitmentHash!}
-            submittedOnchain={entry.submittedOnchain ?? false}
-            txHash={entry.txHash ?? null}
-            onAnchorSuccess={onAnchorSuccess}
-          />
-        </div>
-      )}
     </motion.div>
   );
 }
@@ -133,16 +111,14 @@ function HistoryRow({ entry, delay, onAnchorSuccess }: HistoryRowProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PredictionHistoryProps {
-  entries:          PredictionHistoryEntry[];
-  /** Forwarded to AnchorPredictionButton — updates prediction state in parent. */
-  onAnchorSuccess?: (predictionId: string, txHash: string) => void;
+  entries: PredictionHistoryEntry[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function PredictionHistory({ entries, onAnchorSuccess }: PredictionHistoryProps) {
+export function PredictionHistory({ entries }: PredictionHistoryProps) {
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center gap-4 py-12 text-center">
@@ -178,7 +154,6 @@ export function PredictionHistory({ entries, onAnchorSuccess }: PredictionHistor
           key={entry.id}
           entry={entry}
           delay={Math.min(i * 0.05, 0.25)}
-          onAnchorSuccess={onAnchorSuccess}
         />
       ))}
     </div>

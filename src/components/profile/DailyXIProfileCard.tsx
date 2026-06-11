@@ -5,8 +5,6 @@ import { Trophy } from "lucide-react";
 import { useAccount } from "wagmi";
 import { cn } from "@/lib/utils";
 import { XI_POSITIONS, loadTodayXI, saveTodayXI, fetchDailyXIRemote, fetchDailyXIEntryMeta, type DailyXIPlayer, type DailyXIEntryMeta } from "@/lib/daily-xi";
-import { ProofBadge } from "@/components/proof/ProofBadge";
-import { AnchorDailyXIButton } from "@/components/onchain/AnchorDailyXIButton";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single player token in the strip
@@ -125,7 +123,7 @@ export function DailyXIProfileCard() {
                 ))}
               </div>
             </div>
-            {/* Score hint + proof badge */}
+            {/* Score hint */}
             <div className="flex items-center justify-between px-0.5 gap-2 flex-wrap">
               {entryMeta?.status === 'scored' ? (
                 <span className="text-[9px] font-mono text-emerald-400/70 font-bold">
@@ -134,35 +132,9 @@ export function DailyXIProfileCard() {
               ) : (
                 <span className="text-[9px] font-mono text-white/20">Score: 0 XP</span>
               )}
-              <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                <span className="text-[9px] font-mono text-white/15 hidden sm:block">
-                  {entryMeta?.status === 'scored' ? 'Scored' : 'Max 20 XP · Scored after matches'}
-                </span>
-                {entryMeta?.commitmentHash && (
-                  <>
-                    <ProofBadge
-                      commitmentHash={entryMeta.commitmentHash}
-                      submittedOnchain={entryMeta.submittedOnchain}
-                      txHash={entryMeta.txHash}
-                    />
-                    {/* Anchor on Base — only shows when not yet anchored and wallet is connected */}
-                    {!entryMeta.submittedOnchain && (
-                      <AnchorDailyXIButton
-                        entryDate={new Date().toISOString().slice(0, 10)}
-                        commitmentHash={entryMeta.commitmentHash}
-                        submittedOnchain={false}
-                        txHash={null}
-                        onAnchorSuccess={(anchorTxHash) => {
-                          setEntryMeta(prev => prev
-                            ? { ...prev, submittedOnchain: true, txHash: anchorTxHash }
-                            : null
-                          );
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
+              <span className="text-[9px] font-mono text-white/15 hidden sm:block">
+                {entryMeta?.status === 'scored' ? 'Scored' : 'Max 20 XP · Scored after matches'}
+              </span>
             </div>
           </div>
         ) : filled > 0 ? (

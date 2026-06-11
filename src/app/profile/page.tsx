@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useAccount } from "wagmi";
 import {
-  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet, Anchor,
+  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet,
 } from "lucide-react";
 import { badges } from "@/data/badges";
 import { getMatchById } from "@/data/matches";
@@ -65,16 +65,12 @@ type ApiProfile = {
 };
 
 type ApiPrediction = {
-  id: string;
-  matchId: string;
-  outcome: "H" | "D" | "A";
-  placedAt: string;
+  id:            string;
+  matchId:       string;
+  outcome:       "H" | "D" | "A";
+  placedAt:      string;
   pointsAwarded: number | null;
-  isCorrect: boolean | null;
-  // Onchain commitment fields — returned by GET /api/predictions
-  commitmentHash:   string | null;
-  submittedOnchain: boolean;
-  txHash:           string | null;
+  isCorrect:     boolean | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,14 +102,10 @@ function toHistoryEntry(p: ApiPrediction, metaMap: Record<string, MatchMeta>): P
     xpDelta:          p.pointsAwarded ?? 0,
     date:             new Date(p.placedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
     leagueLogo:       logo,
-    homeCrest:        meta?.homeCrest ?? null,
-    awayCrest:        meta?.awayCrest ?? null,
+    homeCrest:  meta?.homeCrest ?? null,
+    awayCrest:  meta?.awayCrest ?? null,
     homeShort,
     awayShort,
-    // Onchain commitment fields — passed through from API response
-    commitmentHash:   p.commitmentHash   ?? null,
-    submittedOnchain: p.submittedOnchain ?? false,
-    txHash:           p.txHash           ?? null,
   };
 }
 
@@ -143,8 +135,7 @@ function SectionHeader({ title }: { title: string }) {
 const WC_TOTAL = 21; // 5 tournament + 12 group + 4 fun
 
 function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
-  const [count,      setCount]      = useState<number | null>(null);
-  const [proofCount, setProofCount] = useState(0);
+  const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
     // Load localStorage immediately as baseline
@@ -159,9 +150,6 @@ function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
         const remoteCount = Object.keys(remoteStore).length;
         // Use whichever is higher (local may have unsaved remote picks briefly)
         setCount(Math.max(localCount, remoteCount));
-        // Count entries with a commitment hash
-        const proofs = Object.values(remoteStore).filter(p => p.commitmentHash).length;
-        if (proofs > 0) setProofCount(proofs);
       })
       .catch(() => {/* fallback: localStorage count already set */});
   }, [walletAddress]);
@@ -185,12 +173,6 @@ function WCPicksSummary({ walletAddress }: { walletAddress?: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2.5">
-          {proofCount > 0 && (
-            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20">
-              <Shield size={8} className="text-primary/60 flex-shrink-0" />
-              <span className="text-[8px] font-mono text-primary/60 font-bold">{proofCount} proof{proofCount !== 1 ? "s" : ""}</span>
-            </div>
-          )}
           {count !== null && count > 0 && (
             <div className="w-20 h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
               <div
@@ -377,20 +359,6 @@ export default function ProfilePage() {
   const [loading,       setLoading]       = useState(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
 
-  // Called by AnchorPredictionButton after PATCH succeeds — updates the row in
-  // place so the button switches to "Anchored on Base ✓" without a full refetch.
-  const handleAnchorSuccess = useCallback(
-    (predictionId: string, txHash: string) => {
-      setPredictions(prev =>
-        prev.map(p =>
-          p.id === predictionId
-            ? { ...p, submittedOnchain: true, txHash }
-            : p,
-        ),
-      );
-    },
-    [],
-  );
   // Badge state — populated by /api/badges (read-only, no awards here)
   const [earnedBadgeIds,   setEarnedBadgeIds]   = useState<Set<string>>(new Set<string>());
   // earnedAtMap: badgeId → ISO earnedAt timestamp (for "Unlocked Jan 1" display)
@@ -498,17 +466,8 @@ export default function ProfilePage() {
     });
   }, []);
 
-  // Ref for the Match Predictions section — used by the Onchain Proof summary scroll CTA
-  const predictionsRef = useRef<HTMLElement>(null)
-
   const accuracy       = profile?.accuracy ?? 0;
   const historyEntries = predictions.map(p => toHistoryEntry(p, matchMeta));
-
-  // Onchain proof counts — derived from the already-fetched predictions state
-  // anchored:    TX confirmed and recorded in DB
-  // proof-ready: commitment hash exists but not yet anchored
-  const anchoredCount   = predictions.filter(p => p.submittedOnchain && p.txHash).length
-  const proofReadyCount = predictions.filter(p => p.commitmentHash && !p.submittedOnchain).length
 
   // Split badges into earned (DB-confirmed) and locked (everything else).
   const earnedBadges    = badges.filter(b => earnedBadgeIds.has(b.id));
@@ -571,60 +530,6 @@ export default function ProfilePage() {
               <SectionHeader title="Daily Streak" />
               <DailyStreak isConnected={isConnected} />
             </section>
-
-            {/* ── Onchain Proof summary ─────────────────────────────────── */}
-            {(anchoredCount > 0 || proofReadyCount > 0) && (
-              <section>
-                <SectionHeader title="Onchain Proof" />
-                <div className={cn(
-                  "relative overflow-hidden rounded-2xl border border-primary/20",
-                  "bg-gradient-to-b from-primary/[0.06] to-transparent",
-                  "px-4 py-4",
-                )}>
-                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
-
-                  <p className="text-[11px] text-white/35 leading-relaxed mb-4">
-                    Anchor your best predictions on Base and keep a public proof forever.
-                  </p>
-
-                  {/* Counts */}
-                  <div className="flex items-stretch gap-3 mb-4">
-                    <div className="flex-1 text-center py-3 rounded-xl bg-white/[0.03] border border-emerald-500/15">
-                      <p className="text-2xl font-mono font-black text-emerald-400 tabular-nums leading-none">
-                        {anchoredCount}
-                      </p>
-                      <p className="text-[9px] font-mono text-white/25 uppercase tracking-wide mt-1">
-                        Anchored
-                      </p>
-                    </div>
-                    <div className="flex-1 text-center py-3 rounded-xl bg-white/[0.03] border border-primary/15">
-                      <p className="text-2xl font-mono font-black text-primary/70 tabular-nums leading-none">
-                        {proofReadyCount}
-                      </p>
-                      <p className="text-[9px] font-mono text-white/25 uppercase tracking-wide mt-1">
-                        Proof-ready
-                      </p>
-                    </div>
-                  </div>
-
-                  {proofReadyCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => predictionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                      className={cn(
-                        "w-full flex items-center justify-center gap-2 py-2 rounded-xl",
-                        "text-[10px] font-semibold text-primary/70 hover:text-primary",
-                        "border border-primary/20 hover:border-primary/35",
-                        "bg-primary/5 hover:bg-primary/10 transition-all duration-150 active:scale-[0.99]",
-                      )}
-                    >
-                      <Anchor size={10} />
-                      Go to Match Predictions
-                    </button>
-                  )}
-                </div>
-              </section>
-            )}
 
             {/* ── Daily XI ──────────────────────────────────────────────── */}
             <section>
@@ -786,34 +691,9 @@ export default function ProfilePage() {
             </section>
 
             {/* ── Prediction history ────────────────────────────────────── */}
-            <section ref={predictionsRef}>
+            <section>
               <SectionHeader title="Match Predictions" />
-
-              {/* Inline anchor-feature callout — visible once there are predictions */}
-              {historyEntries.length > 0 && (
-                <div className={cn(
-                  "flex items-start gap-2.5 px-3 py-2.5 mb-3 rounded-xl",
-                  "bg-primary/[0.05] border border-primary/12",
-                )}>
-                  <Anchor size={11} className="text-primary/40 flex-shrink-0 mt-px" />
-                  <div>
-                    <p className="text-[10px] font-bold text-white/45 leading-none mb-0.5">
-                      Proof-ready Predictions
-                    </p>
-                    <p className="text-[10px] text-white/25 leading-relaxed">
-                      Your predictions stay free. Anchor only the calls you want to prove publicly on Base.
-                    </p>
-                    <p className="text-[9px] font-mono text-white/18 mt-1">
-                      Optional · Requires a small Base network fee
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <PredictionHistory
-                entries={historyEntries}
-                onAnchorSuccess={handleAnchorSuccess}
-              />
+              <PredictionHistory entries={historyEntries} />
             </section>
           </>
         ) : null}

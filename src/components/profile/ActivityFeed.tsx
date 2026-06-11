@@ -4,7 +4,6 @@ import { useState, useEffect }                from "react";
 import { motion }                             from "framer-motion";
 import { CheckCircle2, XCircle, Clock, Zap, Trophy, CalendarDays } from "lucide-react";
 import { cn }                                 from "@/lib/utils";
-import { ProofBadge }                         from "@/components/proof/ProofBadge";
 import {
   fetchUnifiedActivity,
   type ActivityItem,
@@ -62,15 +61,6 @@ function ActivityRow({ item, delay }: { item: ActivityItem; delay: number }) {
         <p className="text-[10px] font-mono text-white/30 mt-0.5 truncate">
           {item.subtitle}
         </p>
-        {item.proofHash && (
-          <div className="mt-1.5">
-            <ProofBadge
-              commitmentHash={item.proofHash}
-              submittedOnchain={item.submittedOnchain}
-              txHash={item.txHash}
-            />
-          </div>
-        )}
       </div>
 
       {/* XP delta + date */}
