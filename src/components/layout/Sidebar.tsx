@@ -59,10 +59,10 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside
-      className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[220px] z-40 border-r border-white/[0.07]"
-      style={{ background: "rgba(6,8,18,0.92)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)" }}
-    >
+    <aside className={cn(
+      "hidden md:flex flex-col fixed left-0 top-0 h-screen w-[220px] z-40",
+      "glass-nav border-r border-white/[0.07]"
+    )}>
 
       {/* ── Brand area ──────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.07]">

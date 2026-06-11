@@ -1,0 +1,14 @@
+# Foundry smart contract toolchain — not needed for Next.js deployment
+contracts/
+
+# Supabase local files (SQL migrations, photos) — not needed for deployment
+supabase/
+
+# Documentation
+docs/
+
+# Checkpoint files
+*_CHECKPOINT.md
+PROJECT_HANDOFF.md
+PROJECT_STATUS.txt
+PROJECT_TREE.txt

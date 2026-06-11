@@ -19,8 +19,8 @@ export function BottomNav() {
   return (
     <nav className={cn(
       "md:hidden fixed bottom-0 inset-x-0 z-40",
-      "border-t border-white/[0.07]",
-    )} style={{ background: "rgba(6,8,18,0.92)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)" }}>
+      "glass-nav border-t border-white/[0.07]",
+    )}>
       {/* Mobile nav background */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/assets/backgrounds/mobile-nav-bg.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover object-bottom pointer-events-none" style={{ opacity: 0.35 }} loading="lazy" decoding="async" />
