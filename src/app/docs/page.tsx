@@ -365,8 +365,8 @@ export default function DocsPage() {
               </P>
 
               <P>
-                World Cup predictions are stored on your account and can optionally be anchored
-                on Base as permanent on-chain proof. The WC Hub updates in real time as the
+                World Cup predictions are recorded on Base when submitted with a connected wallet,
+                creating a permanent onchain proof. The WC Hub updates in real time as the
                 tournament progresses.
               </P>
 

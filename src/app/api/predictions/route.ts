@@ -106,10 +106,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── All checks passed — proceed with Supabase writes ─────────────────────
-    const points = typeof pointsAwarded === 'number' && pointsAwarded >= 0
-      ? pointsAwarded
-      : 10
-
     const supabase = getServerSupabaseClient()
 
     // ── 1. Upsert profile ────────────────────────────────────────────────────
@@ -194,19 +190,22 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── 4. Upsert prediction with commitment_hash, tx_hash, submitted_onchain ─
-    const placedAt = new Date().toISOString()
+    // ── 4. Upsert prediction with full TX provenance ──────────────────────────
+    const placedAt          = new Date().toISOString()
+    const onchainVerifiedAt = new Date().toISOString()
     const { data: prediction, error: predErr } = await supabase
       .from('predictions')
       .upsert(
         {
-          profile_id:       profile.id,
-          match_id:         cleanMatchId,
-          outcome:          predictedOutcome as DbOutcome,
-          placed_at:        placedAt,
-          commitment_hash:  commitmentHash,
-          submitted_onchain: true,
-          tx_hash:          (txHash as string).toLowerCase(),
+          profile_id:          profile.id,
+          match_id:            cleanMatchId,
+          outcome:             predictedOutcome as DbOutcome,
+          placed_at:           placedAt,
+          commitment_hash:     commitmentHash,
+          submitted_onchain:   true,
+          tx_hash:             (txHash as string).toLowerCase(),
+          client_nonce:        (clientNonce as string).trim(),
+          onchain_verified_at: onchainVerifiedAt,
         },
         { onConflict: 'profile_id,match_id' },
       )

@@ -171,19 +171,21 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Upsert ───────────────────────────────────────────────────────────────
+    const now = new Date().toISOString()
     const { data, error } = await supabase
       .from('daily_xi_entries')
       .upsert(
         {
-          wallet_address:    normalizedWallet,
-          entry_date:        date,
-          players:           players,
-          status:            'pending',
-          projected_max_xp:  maxXp,
-          commitment_hash:   commitmentHash,
-          submitted_onchain: true,
-          tx_hash:           (txHash as string).toLowerCase(),
-          updated_at:        new Date().toISOString(),
+          wallet_address:      normalizedWallet,
+          entry_date:          date,
+          players:             players,
+          status:              'pending',
+          projected_max_xp:    maxXp,
+          commitment_hash:     commitmentHash,
+          submitted_onchain:   true,
+          tx_hash:             (txHash as string).toLowerCase(),
+          onchain_verified_at: now,
+          updated_at:          now,
         },
         { onConflict: 'wallet_address,entry_date' },
       )

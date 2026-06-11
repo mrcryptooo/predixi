@@ -245,8 +245,8 @@ export async function fetchDailyXIEntryMeta(
 export async function saveDailyXIRemote(
   walletAddress: string,
   players: (DailyXIPlayer | null)[],
-  date?: string,
-  txHash?: string,
+  date: string,
+  txHash: string,
 ): Promise<{ commitmentHash: string | null }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -258,20 +258,18 @@ export async function saveDailyXIRemote(
       body:    JSON.stringify({
         walletAddress,
         players,
-        ...(date ? { entryDate: date } : {}),
+        entryDate:      date,
         projectedMaxXp: 20,
-        ...(txHash ? { txHash } : {}),
+        txHash,
       }),
     });
   } catch (fetchErr) {
-    // Network-level failure (offline, fetch aborted, invalid header value, DNS error)
     const detail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
     console.warn("[DailyXI] fetch threw:", detail);
     throw new Error(`Network error — ${detail}`);
   }
 
   if (!res.ok) {
-    // Surface the server's own error message so the user sees the real reason
     let serverMsg = `Server error ${res.status}`;
     try {
       const body = await res.json() as { error?: string };
@@ -281,8 +279,6 @@ export async function saveDailyXIRemote(
     throw new Error(serverMsg);
   }
 
-  // Extract commitmentHash from successful response so callers can display
-  // the Anchor on Base button immediately without a separate entryMeta refetch.
   try {
     const data = await res.json() as { commitmentHash?: string };
     return { commitmentHash: data.commitmentHash ?? null };

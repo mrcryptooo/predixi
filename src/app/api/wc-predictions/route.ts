@@ -156,22 +156,24 @@ export async function POST(req: NextRequest) {
 
     // ── Upsert ───────────────────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
+    const now = new Date().toISOString()
 
     const { data, error } = await supabase
       .from('wc_predictions')
       .upsert(
         {
-          wallet_address:    normalizedWallet,
-          prediction_key:    cleanKey,
-          prediction_type:   (predictionType as string).trim(),
-          selected_value:    selectedValue,
-          xp_reward:         xpReward as number,
-          status:            'pending',
-          deadline:          deadlineTs,
-          commitment_hash:   commitmentHash,
-          submitted_onchain: true,
-          tx_hash:           (txHash as string).toLowerCase(),
-          updated_at:        new Date().toISOString(),
+          wallet_address:      normalizedWallet,
+          prediction_key:      cleanKey,
+          prediction_type:     (predictionType as string).trim(),
+          selected_value:      selectedValue,
+          xp_reward:           xpReward as number,
+          status:              'pending',
+          deadline:            deadlineTs,
+          commitment_hash:     commitmentHash,
+          submitted_onchain:   true,
+          tx_hash:             (txHash as string).toLowerCase(),
+          onchain_verified_at: now,
+          updated_at:          now,
         },
         { onConflict: 'wallet_address,prediction_key' },
       )

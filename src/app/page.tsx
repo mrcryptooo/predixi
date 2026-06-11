@@ -430,8 +430,8 @@ export default function Home() {
         </section>
 
         {/* ── 3. ONCHAIN PROOF ─────────────────────────────────────────────── */}
-        <section aria-label="Prove your predictions on Base">
-          <SectionHeader title="Prove on Base" href="/profile" linkLabel="View proofs" />
+        <section aria-label="Predictions recorded on Base">
+          <SectionHeader title="On Base" href="/profile" linkLabel="View record" />
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -455,13 +455,13 @@ export default function Home() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-white leading-tight">
-                    Prove Your Best Predictions on Base
+                    Every Prediction Recorded on Base
                   </p>
                   <p className="text-[11px] text-white/35 mt-1.5 leading-relaxed">
-                    Predictions stay free. When you want extra proof, anchor your best calls on Base and keep a public onchain record forever.
+                    When you submit a prediction with a connected wallet, it is written to Base as a permanent onchain record — verifiable by anyone, forever.
                   </p>
                   <p className="text-[9px] font-mono text-white/20 mt-1.5">
-                    Optional · Small Base network fee
+                    Requires wallet · Small Base network fee
                   </p>
                 </div>
               </div>
@@ -485,7 +485,7 @@ export default function Home() {
                     "hover:border-primary hover:bg-primary/10 transition-all duration-150 active:scale-[0.97]",
                   )}
                 >
-                  <Anchor size={11} /> View Proofs
+                  <Anchor size={11} /> View Record
                 </Link>
               </div>
             </div>
