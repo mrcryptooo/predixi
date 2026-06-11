@@ -5,8 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Shuffle, Wallet, ChevronRight, RotateCcw, HelpCircle, X,
 } from "lucide-react";
-import { useAccount, useSignMessage } from "wagmi";
-import { buildPredixiAuthMessage, generateNonce } from "@/lib/auth/wallet-signature";
+import { useAccount, usePublicClient } from "wagmi";
+import { base } from "wagmi/chains";
+import { useSubmitToBase } from "@/hooks/useSubmitToBase";
+import { createDailyXICommitment } from "@/lib/onchain/commitment";
+import { buildCommitmentContext } from "@/lib/onchain/commitmentRegistry";
 import { cn } from "@/lib/utils";
 import {
   XI_POSITIONS,
@@ -311,8 +314,9 @@ function SlotStrip({ slots, nextIdx }: { slots: (DailyXIPlayer | null)[]; nextId
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
-  const { address }          = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const { address }      = useAccount();
+  const publicClient     = usePublicClient({ chainId: base.id });
+  const { submitAsync }  = useSubmitToBase();
 
   const [slots,     setSlots]     = useState<(DailyXIPlayer | null)[]>(() => Array(11).fill(null));
   const [entryMeta, setEntryMeta] = useState<DailyXIEntryMeta | null>(null);
@@ -327,8 +331,9 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   // Increments on every spin — forces Framer Motion key change so animation always fires
   const [spinRunId, setSpinRunId]   = useState(0);
   // Final submit state — remote save only happens once, after all 11 slots are filled
+  type SubmitStep = 'idle' | 'awaiting_wallet' | 'tx_pending' | 'saving' | 'done';
   const [submitted,   setSubmitted]   = useState(false);
-  const [submitting,  setSubmitting]  = useState(false);
+  const [submitStep,  setSubmitStep]  = useState<SubmitStep>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Stable refs — these never go stale inside the interval closure
@@ -476,51 +481,70 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   const handleReset = () => {
     if (intervalRef.current) clearTimeout(intervalRef.current);
     intervalRef.current     = null;
-    isSpinActiveRef.current = false;   // ← release guard on reset
+    isSpinActiveRef.current = false;
     clearTodayXI();
     setSlots(Array(11).fill(null));
     setSpinning(false);
     setTickerIdx(0);
     setSubmitted(false);
+    setSubmitStep('idle');
     setSubmitError(null);
   };
 
-  // Final submit — one signature, one remote save, only after all 11 slots are filled.
+  const submitting = submitStep !== 'idle' && submitStep !== 'done';
+
+  // Final submit — TX on Base, then remote save, only after all 11 slots are filled.
   const handleSubmitFinalXI = useCallback(async () => {
     if (!allFilled || submitting || submitted) return;
     if (!isConnected || !address) return; // wallet not connected — show guidance only
 
-    setSubmitting(true);
+    setSubmitStep('awaiting_wallet');
     setSubmitError(null);
+
     try {
-      const nonce     = generateNonce();
-      const message   = buildPredixiAuthMessage(address, 'daily-xi', nonce);
-      const signature = await signMessageAsync({ message });
-      // saveDailyXIRemote throws on any failure with the actual server reason
-      const { commitmentHash: newHash } = await saveDailyXIRemote(address, slots as DailyXIPlayer[], undefined, { message, signature });
+      const entryDate = new Date().toISOString().slice(0, 10);
+      const playerIds = (slots as DailyXIPlayer[]).map(p => p.id);
+      const { commitmentHash } = createDailyXICommitment({
+        walletAddress:  address,
+        entryDate,
+        playerIds,
+        projectedMaxXp: 20,
+      });
+      const context = buildCommitmentContext('daily-xi', entryDate);
+
+      const txHash = await submitAsync({ commitmentHash, context });
+      setSubmitStep('tx_pending');
+
+      await publicClient!.waitForTransactionReceipt({ hash: txHash });
+      setSubmitStep('saving');
+
+      const { commitmentHash: storedHash } = await saveDailyXIRemote(
+        address,
+        slots as DailyXIPlayer[],
+        entryDate,
+        txHash,
+      );
       setSubmitted(true);
-      // Optimistically update entry meta from the POST response before the full refetch arrives.
-      if (newHash) {
+      setSubmitStep('done');
+
+      if (storedHash) {
         setEntryMeta(prev => ({
           ...(prev ?? { status: 'pending', earnedXp: 0, projectedMaxXp: 20 }),
-          commitmentHash:   newHash,
-          submittedOnchain: false,
-          txHash:           null,
+          commitmentHash:   storedHash,
+          submittedOnchain: true,
+          txHash,
         }));
       }
-      // Full meta refetch for accuracy (scoring status, etc.)
       fetchDailyXIEntryMeta(address)
         .then(meta => { if (meta) setEntryMeta(meta); })
         .catch(() => {/* silent */});
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Submit failed — please try again';
-      // User rejected the wallet signature — not an error, just a cancellation
-      const isCancelled = /rejected|denied|cancelled|cancel/i.test(raw);
-      setSubmitError(isCancelled ? 'Signature cancelled — tap Submit XI to try again' : raw);
-    } finally {
-      setSubmitting(false);
+      const isRejection = /rejected|denied|cancelled|cancel/i.test(raw);
+      setSubmitError(isRejection ? 'Transaction declined — tap Submit XI to try again' : raw);
+      setSubmitStep('idle');
     }
-  }, [allFilled, submitting, submitted, isConnected, address, slots, signMessageAsync]);
+  }, [allFilled, submitting, submitted, isConnected, address, slots, submitAsync, publicClient]);
 
   if (!hydrated) return null;
 
@@ -581,7 +605,7 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             <Wallet size={16} className="text-white/25 flex-shrink-0 relative z-10" />
             <div className="relative z-10">
               <p className="text-xs font-bold text-white/40">Connect wallet to unlock Daily XI</p>
-              <p className="text-[9px] text-white/20 font-mono mt-0.5">Submit on-chain when Base entry opens</p>
+              <p className="text-[9px] text-white/20 font-mono mt-0.5">Connect wallet to submit your XI to Base</p>
             </div>
           </div>
         ) : allFilled ? (
@@ -592,6 +616,12 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
             status={entryMeta?.status}
             onSubmit={handleSubmitFinalXI}
             submitting={submitting}
+            submittingLabel={
+              submitStep === 'awaiting_wallet' ? 'Confirm in wallet…' :
+              submitStep === 'tx_pending'      ? 'Sending to Base…'   :
+              submitStep === 'saving'          ? 'Saving…'            :
+              undefined
+            }
             submitted={submitted}
             isConnected={isConnected}
             submitError={submitError}

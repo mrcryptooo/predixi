@@ -1,81 +1,21 @@
 /**
  * API Route — /api/predictions
  *
- * POST  → submit a prediction (verify signature → upsert profile + match + prediction)
- * GET   → fetch predictions for a wallet address
- * PATCH → mark a prediction as anchored on Base after a confirmed tx
+ * POST → submit a prediction (verify Base TX → upsert profile + match + prediction)
+ * GET  → fetch predictions for a wallet address
  *
- * Server-side only. Uses service role key via getServerSupabaseClient().
- *
- * Phase 4D: Every POST request must include a wallet signature that proves the
- * caller owns the wallet address in the request body.  Requests without a valid
- * signature are rejected with 401 Unauthorized before any DB write occurs.
- *
- * Signature verification uses viem's publicClient.verifyMessage on the Base chain,
- * which supports both EOA (ecrecover) and smart-wallet (ERC-1271 / ERC-6492)
- * signatures.  This is necessary because Base Account uses ERC-6492 wrapped
- * signatures that are incompatible with the standalone verifyMessage utility.
+ * Transaction-first: every POST must include a confirmed Base txHash from
+ * submitCommitment() on PredixiCommitmentRegistry. The server verifies the
+ * on-chain CommitmentSubmitted event before writing to Supabase.
+ * No wallet message signatures are used or accepted.
  */
 
-import { type NextRequest, NextResponse }  from 'next/server'
-import { createPublicClient, custom }      from 'viem'
-import { base }                            from 'viem/chains'
-import { ProxyAgent, fetch as undiciF }    from 'undici'
-import { getServerSupabaseClient }         from '@/lib/supabase/server'
-import { getMatchById }                    from '@/data/matches'
-import { SIGNATURE_MAX_AGE_MS }            from '@/lib/prediction-message'
-import { ANCHOR_SIGNATURE_MAX_AGE_MS }     from '@/lib/anchor-message'
-import { createPredictionCommitment }      from '@/lib/onchain/commitment'
-import { checkAndAwardBadges }             from '@/lib/badges/checkAndAward'
-import { verifyBaseWalletAuth }            from '@/lib/auth/verify-base-wallet'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Base public client — proxy-aware, created once at module load
-//
-// publicClient.verifyMessage supports:
-//   • EOA wallets (standard 65-byte ecrecover signatures)
-//   • ERC-1271 smart contract wallets (calls isValidSignature on-chain)
-//   • ERC-6492 counterfactual smart wallets (Base Account, Coinbase Smart Wallet)
-//
-// The RPC calls go through the same HTTPS_PROXY env var as the Supabase client
-// (server.ts pattern) so that local Windows dev behind nekobox / v2ray works.
-// On Vercel no proxy is configured and the plain fetch path is used.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function buildBaseClient() {
-  const proxyUrl =
-    process.env.HTTPS_PROXY ??
-    process.env.https_proxy ??
-    process.env.HTTP_PROXY  ??
-    process.env.http_proxy
-
-  const dispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
-
-  const rpcFetch = dispatcher
-    ? (url: string, init?: RequestInit) =>
-        undiciF(url, { ...init, dispatcher } as Parameters<typeof undiciF>[1]) as unknown as Promise<Response>
-    : fetch
-
-  const rpcProvider = {
-    async request({ method, params }: { method: string; params?: unknown[] }) {
-      const res  = await rpcFetch('https://mainnet.base.org', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
-      })
-      const json = await res.json() as {
-        result?: unknown
-        error?:  { code: number; message: string }
-      }
-      if (json.error) throw new Error(`RPC ${json.error.code}: ${json.error.message}`)
-      return json.result
-    },
-  }
-
-  return createPublicClient({ chain: base, transport: custom(rpcProvider) })
-}
-
-const baseClient = buildBaseClient()
+import { type NextRequest, NextResponse } from 'next/server'
+import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import { getMatchById }                   from '@/data/matches'
+import { createPredictionCommitment }     from '@/lib/onchain/commitment'
+import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
+import { verifyOnchainSubmission }        from '@/lib/onchain/verifySubmission'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation helpers
@@ -98,7 +38,8 @@ function err(message: string, status: number) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/predictions
-// Body: { walletAddress, matchId, predictedOutcome, message, signature, signedAt, pointsAwarded? }
+// Body: { walletAddress, matchId, predictedOutcome, txHash, clientNonce,
+//         clientTimestamp, pointsAwarded? }
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -110,13 +51,13 @@ export async function POST(req: NextRequest) {
       walletAddress,
       matchId,
       predictedOutcome,
-      message,
-      signature,
-      signedAt,
+      txHash,
+      clientNonce,
+      clientTimestamp,
       pointsAwarded,
     } = body as Record<string, unknown>
 
-    // ── Basic input validation ───────────────────────────────────────────────
+    // ── Input validation ─────────────────────────────────────────────────────
     if (!isValidAddress(walletAddress)) {
       return err('Invalid walletAddress — must be a 0x Ethereum address', 400)
     }
@@ -130,72 +71,48 @@ export async function POST(req: NextRequest) {
       return err('Invalid predictedOutcome — must be H, D, or A', 400)
     }
 
-    // ── Phase 4D: Signature fields required ──────────────────────────────────
-    if (!message || typeof message !== 'string' || message.trim() === '') {
-      return err('Missing message — wallet signature required', 401)
+    // ── TX fields required ───────────────────────────────────────────────────
+    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return err('txHash is required — must be 0x-prefixed 64-hex transaction hash', 400)
     }
-    if (!signature || typeof signature !== 'string' || !signature.startsWith('0x')) {
-      return err('Missing or invalid signature', 401)
+    if (!clientNonce || typeof clientNonce !== 'string' || clientNonce.trim() === '') {
+      return err('clientNonce is required', 400)
     }
-    if (!signedAt || typeof signedAt !== 'string') {
-      return err('Missing signedAt timestamp', 401)
+    if (!clientTimestamp || typeof clientTimestamp !== 'string' || clientTimestamp.trim() === '') {
+      return err('clientTimestamp is required', 400)
     }
 
     const normalizedAddress = (walletAddress as string).toLowerCase()
+    const cleanMatchId      = (matchId as string).trim()
 
-    // ── Phase 4D: Verify the signature via Base public client ────────────────
-    // publicClient.verifyMessage handles EOA (ecrecover), ERC-1271 (deployed
-    // smart wallets), and ERC-6492 (counterfactual / Base Account) signatures.
-    let isValid = false
-    try {
-      isValid = await baseClient.verifyMessage({
-        address:   walletAddress as `0x${string}`,
-        message:   message as string,
-        signature: signature as `0x${string}`,
-      })
-    } catch (verifyErr: unknown) {
-      const detail = verifyErr instanceof Error ? verifyErr.message : String(verifyErr)
-      console.error('[POST /api/predictions] verifyMessage error:', detail)
-      return err('Signature verification failed', 401)
-    }
+    // ── Re-derive commitment hash from client inputs ──────────────────────────
+    const { commitmentHash } = createPredictionCommitment({
+      walletAddress:   normalizedAddress,
+      matchId:         cleanMatchId,
+      outcome:         predictedOutcome as string,
+      clientTimestamp: (clientTimestamp as string).trim(),
+      clientNonce:     (clientNonce as string).trim(),
+    })
 
-    if (!isValid) {
-      return err('Invalid signature — request rejected', 401)
-    }
-
-    // ── Phase 4D: Verify message content matches the request body ────────────
-    // Re-checking the message text prevents a valid signature from being
-    // recycled for a different match or outcome.
-    const cleanMessage = message as string
-    if (!cleanMessage.includes(`Wallet: ${normalizedAddress}`)) {
-      return err('Signature mismatch: wallet address', 401)
-    }
-    if (!cleanMessage.includes(`Match ID: ${(matchId as string).trim()}`)) {
-      return err('Signature mismatch: match ID', 401)
-    }
-    if (!cleanMessage.includes(`Outcome: ${predictedOutcome as string}`)) {
-      return err('Signature mismatch: outcome', 401)
+    // ── Verify on-chain TX — must precede any DB write ────────────────────────
+    const verify = await verifyOnchainSubmission(
+      txHash as string,
+      normalizedAddress,
+      commitmentHash,
+    )
+    if (!verify.ok) {
+      console.warn('[POST /api/predictions] TX verification failed:', verify.error)
+      return err(`Transaction verification failed: ${verify.error}`, 400)
     }
 
-    // ── Phase 4D: Reject expired signatures (anti-replay) ───────────────────
-    // Extract the timestamp that was embedded in the signed message and reject
-    // signatures that are older than SIGNATURE_MAX_AGE_MS (10 minutes).
-    const tsMatch = cleanMessage.match(/Timestamp: (.+)/)
-    if (tsMatch) {
-      const signedTime = new Date(tsMatch[1].trim()).getTime()
-      if (isNaN(signedTime) || Date.now() - signedTime > SIGNATURE_MAX_AGE_MS) {
-        return err('Signature expired — please submit a fresh prediction', 401)
-      }
-    }
-
-    // ── All checks passed — proceed with Supabase writes ────────────────────
+    // ── All checks passed — proceed with Supabase writes ─────────────────────
     const points = typeof pointsAwarded === 'number' && pointsAwarded >= 0
       ? pointsAwarded
       : 10
 
     const supabase = getServerSupabaseClient()
 
-    // ── 1. (after lock check) Upsert profile (create on first connection) ───
+    // ── 1. Upsert profile ────────────────────────────────────────────────────
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .upsert(
@@ -210,22 +127,20 @@ export async function POST(req: NextRequest) {
       return err('Failed to create or fetch profile', 500)
     }
 
-    // ── 2. Ensure match exists in DB — seed from mock data if needed ────────
-    // Also fetch kickoff + status so we can enforce the kickoff lock below.
+    // ── 2. Ensure match exists in DB ─────────────────────────────────────────
     const { data: existingMatch } = await supabase
       .from('matches')
       .select('id, kickoff, status')
-      .eq('id', (matchId as string).trim())
+      .eq('id', cleanMatchId)
       .maybeSingle()
 
-    // Track the authoritative kickoff for the lock check.
     let matchKickoff: string | null = existingMatch?.kickoff ?? null
 
     if (!existingMatch) {
-      const mock = getMatchById((matchId as string).trim())
+      const mock = getMatchById(cleanMatchId)
       if (!mock) return err(`Unknown matchId: ${matchId}`, 404)
 
-      matchKickoff = mock.kickoff   // use mock kickoff for lock check
+      matchKickoff = mock.kickoff
 
       const { error: matchErr } = await supabase.from('matches').insert({
         id:               mock.id,
@@ -248,18 +163,15 @@ export async function POST(req: NextRequest) {
       })
 
       if (matchErr && matchErr.code !== '23505') {
-        // 23505 = unique_violation (race condition — another request seeded it first)
         console.error('[POST /api/predictions] match insert:', matchErr)
         return err('Failed to seed match record', 500)
       }
     }
 
-    // ── 3. Kickoff lock — server time only, no client trust ─────────────────
-    // Predictions are closed as soon as the server clock reaches kickoff.
-    // Covers: live, finished, postponed, and upcoming-but-past-kickoff matches.
+    // ── 3. Kickoff lock ──────────────────────────────────────────────────────
     if (!matchKickoff) {
       return NextResponse.json(
-        { success: false, error: 'Match has no kickoff time — cannot accept predictions', locked: true },
+        { success: false, error: 'Match has no kickoff time', locked: true },
         { status: 400 },
       )
     }
@@ -282,28 +194,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── 4. Lock-in placedAt — shared between the upsert row and the hash ──────
+    // ── 4. Upsert prediction with commitment_hash, tx_hash, submitted_onchain ─
     const placedAt = new Date().toISOString()
-
-    // ── 5. Upsert prediction — without commitment_hash (added in step 6) ─────
-    //
-    // We upsert first to obtain the stable DB row UUID (prediction.id).
-    // The UUID is included in the commitment hash so each hash is provably
-    // unique per row, independently of timestamp precision or retry timing.
-    //
-    // On conflict (profile_id, match_id): updates outcome + placed_at only.
-    // The existing commitment_hash is left untouched by the upsert and will
-    // be overwritten by the explicit UPDATE in step 6.
-    //
-    // commitment_hash is nullable in the schema, so omitting it here is safe.
     const { data: prediction, error: predErr } = await supabase
       .from('predictions')
       .upsert(
         {
-          profile_id: profile.id,
-          match_id:   (matchId as string).trim(),
-          outcome:    predictedOutcome as DbOutcome,
-          placed_at:  placedAt,
+          profile_id:       profile.id,
+          match_id:         cleanMatchId,
+          outcome:          predictedOutcome as DbOutcome,
+          placed_at:        placedAt,
+          commitment_hash:  commitmentHash,
+          submitted_onchain: true,
+          tx_hash:          (txHash as string).toLowerCase(),
         },
         { onConflict: 'profile_id,match_id' },
       )
@@ -315,34 +218,7 @@ export async function POST(req: NextRequest) {
       return err('Failed to save prediction', 500)
     }
 
-    // ── 6. Compute commitment hash — includes DB row UUID for uniqueness ──────
-    //
-    // Now that prediction.id is known, include it in the hash payload.
-    // This guarantees: same wallet + same match + same outcome + same UUID
-    // always produces the same hash (deterministic), and no two different
-    // prediction rows can ever share a hash (unique).
-    const { commitmentHash } = createPredictionCommitment({
-      walletAddress: normalizedAddress,
-      matchId:       (matchId as string).trim(),
-      outcome:       predictedOutcome as string,
-      placedAt,
-      predictionId:  prediction.id as string,
-    })
-
-    // ── 7. Stamp commitment_hash onto the row ─────────────────────────────────
-    const { error: hashErr } = await supabase
-      .from('predictions')
-      .update({ commitment_hash: commitmentHash })
-      .eq('id', prediction.id)
-
-    if (hashErr) {
-      console.error('[POST /api/predictions] commitment_hash update:', hashErr)
-      return err('Failed to record commitment hash', 500)
-    }
-
-    // ── 8. Badge check (fire-and-forget — never blocks the main response) ─────
-    // Runs after all core writes succeed. Badge errors are logged but suppressed
-    // so a badge system failure never causes the prediction POST to return 500.
+    // ── 5. Badge check (fire-and-forget) ─────────────────────────────────────
     try {
       await checkAndAwardBadges({
         walletAddress:    normalizedAddress,
@@ -355,10 +231,8 @@ export async function POST(req: NextRequest) {
       console.warn('[POST /api/predictions] badge award error (non-fatal):', badgeErr)
     }
 
-    // walletAuth: mandatory verification already passed above (Phase 4D)
     return NextResponse.json({
       success: true,
-      walletAuth: { checked: true, verified: true },
       commitmentHash,
       prediction: {
         id:            prediction.id,
@@ -445,186 +319,3 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/predictions
-//
-// Marks a match prediction as anchored on Base Mainnet after the client has
-// broadcast and confirmed a submitCommitment tx.
-//
-// This endpoint only records the result — it does NOT send any onchain tx.
-// Normal prediction submission (POST) is completely unaffected.
-//
-// Request headers (required):
-//   x-wallet-message   — URL-encoded EIP-191 message (buildAnchorMessage output)
-//   x-wallet-signature — 0x-prefixed hex signature from the connected wallet
-//
-// Request body:
-//   { predictionId: string, txHash: string, commitmentHash: string }
-//
-// Security model:
-//   1. The wallet address is extracted from the signed message — never from body.
-//   2. The message binds (wallet + predictionId + txHash + timestamp), so a
-//      valid signature cannot be replayed for a different prediction or tx.
-//   3. verifyBaseWalletAuth performs the cryptographic check (ERC-6492 safe).
-//   4. The DB ownership check (profile.wallet_address === signerWallet) prevents
-//      one user from marking another user's prediction as anchored.
-//   5. The commitment_hash in the DB must match the body, preventing hash swap.
-//
-// Idempotency:
-//   - Same txHash already stored → 200 ok (safe to retry after network hiccup).
-//   - Different txHash already stored → 409 (prevents overwriting).
-// ─────────────────────────────────────────────────────────────────────────────
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/
-const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
-const WALLET_LINE_RE = /^Wallet: (0x[0-9a-fA-F]{40})$/im
-const TIMESTAMP_LINE_RE = /Timestamp: (.+)/
-
-export async function PATCH(req: NextRequest) {
-  try {
-    const body = await req.json().catch(() => null)
-    if (!body || typeof body !== 'object') return err('Invalid JSON body', 400)
-
-    const { predictionId, txHash, commitmentHash } = body as Record<string, unknown>
-
-    // ── Input validation ────────────────────────────────────────────────────────
-    if (!predictionId || typeof predictionId !== 'string' || !UUID_RE.test(predictionId)) {
-      return err('Invalid predictionId — must be a UUID', 400)
-    }
-    if (!txHash || typeof txHash !== 'string' || !TX_HASH_RE.test(txHash)) {
-      return err('Invalid txHash — must be 0x-prefixed 64-hex transaction hash', 400)
-    }
-    if (!commitmentHash || typeof commitmentHash !== 'string' || !BYTES32_RE.test(commitmentHash)) {
-      return err('Invalid commitmentHash — must be 0x-prefixed bytes32 hex', 400)
-    }
-
-    // ── Extract and validate signed message ─────────────────────────────────────
-    const rawMsgHeader = req.headers.get('x-wallet-message')
-    const sigHeader    = req.headers.get('x-wallet-signature')
-
-    if (!rawMsgHeader || !sigHeader) {
-      return err('Missing auth headers — x-wallet-message and x-wallet-signature required', 401)
-    }
-
-    let msgHeader: string
-    try {
-      msgHeader = decodeURIComponent(rawMsgHeader)
-    } catch {
-      return err('x-wallet-message header could not be decoded', 401)
-    }
-
-    // Extract wallet address from the signed message — NEVER from request body
-    const walletMatch = msgHeader.match(WALLET_LINE_RE)
-    if (!walletMatch) {
-      return err('Wallet address not found in signed message', 401)
-    }
-    const signerWallet = walletMatch[1].toLowerCase()
-
-    // Verify the message is bound to the correct action (not a prediction-submit replay)
-    if (!msgHeader.includes('Action: Anchor prediction on Base')) {
-      return err('Signature action mismatch — expected "Anchor prediction on Base"', 401)
-    }
-
-    // Verify the message binds the exact predictionId (anti-replay across predictions)
-    if (!msgHeader.includes(`Prediction ID: ${predictionId}`)) {
-      return err('Signature mismatch: prediction ID', 401)
-    }
-
-    // Verify the message binds the exact txHash (anti-replay across transactions)
-    if (!msgHeader.includes(`Tx Hash: ${txHash.toLowerCase()}`)) {
-      return err('Signature mismatch: tx hash', 401)
-    }
-
-    // Reject expired signatures (10-minute window, same as prediction submit)
-    const tsMatch = msgHeader.match(TIMESTAMP_LINE_RE)
-    if (tsMatch) {
-      const signedTime = new Date(tsMatch[1].trim()).getTime()
-      if (isNaN(signedTime) || Date.now() - signedTime > ANCHOR_SIGNATURE_MAX_AGE_MS) {
-        return err('Anchor signature expired — sign a fresh message', 401)
-      }
-    }
-
-    // ── Cryptographic signature verification (ERC-6492 / smart-wallet safe) ────
-    const authResult = await verifyBaseWalletAuth(req, signerWallet, 'Anchor prediction on Base')
-    if (!authResult.verified) {
-      return err('Invalid wallet signature', 401)
-    }
-
-    // ── DB: fetch prediction row ─────────────────────────────────────────────────
-    const supabase = getServerSupabaseClient()
-
-    const { data: prediction, error: fetchErr } = await supabase
-      .from('predictions')
-      .select('id, profile_id, commitment_hash, submitted_onchain, tx_hash')
-      .eq('id', predictionId)
-      .maybeSingle()
-
-    if (fetchErr) {
-      console.error('[PATCH /api/predictions] fetch prediction:', fetchErr)
-      return err('Failed to fetch prediction', 500)
-    }
-    if (!prediction) {
-      return err('Prediction not found', 404)
-    }
-
-    // ── Ownership check — profile wallet must match the signer ──────────────────
-    const { data: profile, error: profileErr } = await supabase
-      .from('profiles')
-      .select('wallet_address')
-      .eq('id', prediction.profile_id)
-      .maybeSingle()
-
-    if (profileErr || !profile) {
-      console.error('[PATCH /api/predictions] fetch profile:', profileErr)
-      return err('Failed to verify prediction ownership', 500)
-    }
-    if (profile.wallet_address !== signerWallet) {
-      return err('Forbidden — prediction belongs to a different wallet', 403)
-    }
-
-    // ── Commitment hash must match what was stored at prediction submit time ─────
-    if (!prediction.commitment_hash || prediction.commitment_hash !== commitmentHash) {
-      return err('Commitment hash mismatch', 400)
-    }
-
-    // ── Idempotency ──────────────────────────────────────────────────────────────
-    if (prediction.submitted_onchain) {
-      if (prediction.tx_hash === txHash) {
-        // Already anchored with the same tx — safe retry
-        return NextResponse.json({
-          ok:               true,
-          predictionId,
-          submittedOnchain: true,
-          txHash,
-        })
-      }
-      // Already anchored with a DIFFERENT tx — refuse to overwrite
-      return NextResponse.json(
-        { ok: false, error: 'Prediction already anchored with a different transaction' },
-        { status: 409 },
-      )
-    }
-
-    // ── Write: mark as anchored ──────────────────────────────────────────────────
-    const { error: updateErr } = await supabase
-      .from('predictions')
-      .update({ submitted_onchain: true, tx_hash: txHash })
-      .eq('id', predictionId)
-
-    if (updateErr) {
-      console.error('[PATCH /api/predictions] update:', updateErr)
-      return err('Failed to record anchor', 500)
-    }
-
-    return NextResponse.json({
-      ok:               true,
-      predictionId,
-      submittedOnchain: true,
-      txHash,
-    })
-  } catch (error) {
-    console.error('[PATCH /api/predictions] unhandled:', error)
-    return err('Internal server error', 500)
-  }
-}

@@ -4,11 +4,8 @@
  * These functions call /api/predictions (a server-side route) via fetch.
  * They never touch Supabase directly and never access the service role key.
  *
- * All functions handle errors gracefully — they never throw and always
- * return a typed result so callers can decide how to surface failures.
- *
- * Phase 4D: submitPredictionToApi now requires a wallet signature and the
- * signed message.  The backend will reject requests without a valid signature.
+ * Transaction-first: submitPredictionToApi requires a confirmed Base txHash.
+ * The backend verifies the on-chain CommitmentSubmitted event before saving.
  */
 
 import type { MatchOutcome } from '@/types'
@@ -57,21 +54,20 @@ function toDbOutcome(outcome: MatchOutcome): DbOutcome {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// submitPredictionToApi — Phase 4D: requires message + signature
+// submitPredictionToApi — transaction-first: requires confirmed Base txHash
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function submitPredictionToApi(params: {
-  walletAddress: string
-  matchId: string
-  outcome: MatchOutcome
-  /** The canonical message that was signed by the wallet */
-  message: string
-  /** EIP-191 signature hex string returned by the wallet */
-  signature: string
-  /** ISO timestamp embedded in the message — sent separately so the backend
-   *  can verify it without re-parsing the message text */
-  signedAt: string
-  pointsAwarded?: number
+  walletAddress:   string
+  matchId:         string
+  outcome:         MatchOutcome
+  /** Confirmed Base transaction hash from submitCommitment() */
+  txHash:          string
+  /** crypto.randomUUID() generated client-side before the TX */
+  clientNonce:     string
+  /** ISO timestamp generated client-side before the TX */
+  clientTimestamp: string
+  pointsAwarded?:  number
 }): Promise<SubmitPredictionResult> {
   try {
     const res = await fetch('/api/predictions', {
@@ -81,9 +77,9 @@ export async function submitPredictionToApi(params: {
         walletAddress:    params.walletAddress,
         matchId:          params.matchId,
         predictedOutcome: toDbOutcome(params.outcome),
-        message:          params.message,
-        signature:        params.signature,
-        signedAt:         params.signedAt,
+        txHash:           params.txHash,
+        clientNonce:      params.clientNonce,
+        clientTimestamp:  params.clientTimestamp,
         pointsAwarded:    params.pointsAwarded ?? 10,
       }),
     })

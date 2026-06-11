@@ -97,30 +97,23 @@ export async function fetchWCPredictions(walletAddress: string): Promise<WCPredi
 
 /**
  * Persist a single WC prediction to Supabase.
- * Fire-and-forget — never throws.  localStorage is always saved first.
- *
- * walletMessage + walletSignature are required by the backend (Phase 2).
- * Pass the EIP-191 signed message and its hex signature from the wallet.
+ * Transaction-first: requires a confirmed Base txHash from submitCommitment().
+ * Fire-and-forget — never throws. localStorage is always saved first.
  */
 export async function saveWCPredictionRemote(params: {
-  walletAddress:   string;
-  predictionKey:   string;
-  predictionType:  string;
-  selectedValue:   string[];
-  xpReward:        number;
-  deadline?:       string | null;
-  walletMessage?:  string;
-  walletSignature?: string;
+  walletAddress:  string;
+  predictionKey:  string;
+  predictionType: string;
+  selectedValue:  string[];
+  xpReward:       number;
+  deadline?:      string | null;
+  txHash:         string;
 }): Promise<void> {
   try {
-    const { walletMessage, walletSignature, ...body } = params;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (walletMessage)   headers["x-wallet-message"]   = walletMessage;
-    if (walletSignature) headers["x-wallet-signature"] = walletSignature;
     await fetch("/api/wc-predictions", {
       method:  "POST",
-      headers,
-      body:    JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(params),
     });
   } catch (e) {
     console.warn("[WC] remote save failed:", e);

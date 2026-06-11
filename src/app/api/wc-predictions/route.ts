@@ -2,18 +2,19 @@
  * API Route — /api/wc-predictions
  *
  * GET  ?wallet=0x...  → all wc_predictions rows for that wallet
- * POST               → upsert one prediction (wallet + key = unique)
+ * POST               → upsert one prediction — requires confirmed Base txHash
  *
- * Server-only. Uses service role key.
- * No wallet signature required — predictions are low-stakes MVP persistence.
- * XP settlement is NOT done here; status stays 'pending'.
+ * Transaction-first: POST must include a confirmed Base txHash from
+ * submitCommitment() on PredixiCommitmentRegistry. Server verifies the
+ * CommitmentSubmitted event before writing to Supabase.
+ * No wallet message signatures are used or accepted.
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
-import { getServerSupabaseClient }         from '@/lib/supabase/server'
-import { verifyOptionalWalletAuth }        from '@/lib/auth/wallet-signature'
+import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { createWCCommitment }             from '@/lib/onchain/commitment'
 import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
+import { verifyOnchainSubmission }        from '@/lib/onchain/verifySubmission'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -29,7 +30,6 @@ function err(message: string, status: number) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/wc-predictions?wallet=0x...
-// Returns all WC prediction rows for the given wallet.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -75,8 +75,8 @@ export async function GET(req: NextRequest) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/wc-predictions
-// Body: { walletAddress, predictionKey, predictionType, selectedValue, xpReward, deadline? }
-// Upserts on (wallet_address, prediction_key). status stays 'pending'.
+// Body: { walletAddress, predictionKey, predictionType, selectedValue,
+//         xpReward, deadline?, txHash }
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
       selectedValue,
       xpReward,
       deadline,
+      txHash,
     } = body as Record<string, unknown>
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -124,34 +125,34 @@ export async function POST(req: NextRequest) {
     if ((xpReward as number) > 10000) {
       return err('xpReward must be 10000 or fewer', 400)
     }
+    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return err('txHash is required — must be 0x-prefixed 64-hex transaction hash', 400)
+    }
 
     const normalizedWallet = (walletAddress as string).toLowerCase()
+    const cleanKey         = (predictionKey as string).trim()
     const deadlineTs = typeof deadline === 'string' && deadline.trim() !== ''
       ? deadline.trim()
       : null
 
-    // ── Mandatory wallet auth ─────────────────────────────────────────────────
-    // Requires x-wallet-message + x-wallet-signature headers.
-    // Rejects with 401 if missing or if signature does not match walletAddress.
-    const walletAuth = await verifyOptionalWalletAuth(req, normalizedWallet, 'wc-prediction')
-    if (!walletAuth.verified) {
-      return NextResponse.json(
-        {
-          success:    false,
-          error:      'Wallet signature required',
-          walletAuth: { checked: true, verified: false, reason: walletAuth.reason ?? 'missing' },
-        },
-        { status: 401 },
-      )
-    }
-
-    // ── Compute commitment hash before upsert — stored atomically with row ──
+    // ── Compute commitment hash ───────────────────────────────────────────────
     const { commitmentHash } = createWCCommitment({
       walletAddress: normalizedWallet,
-      predictionKey: (predictionKey as string).trim(),
+      predictionKey: cleanKey,
       selectedValue: selectedValue as string[],
       xpReward:      xpReward as number,
     })
+
+    // ── Verify on-chain TX — must precede any DB write ────────────────────────
+    const verify = await verifyOnchainSubmission(
+      txHash as string,
+      normalizedWallet,
+      commitmentHash,
+    )
+    if (!verify.ok) {
+      console.warn('[POST /api/wc-predictions] TX verification failed:', verify.error)
+      return err(`Transaction verification failed: ${verify.error}`, 400)
+    }
 
     // ── Upsert ───────────────────────────────────────────────────────────────
     const supabase = getServerSupabaseClient()
@@ -160,15 +161,17 @@ export async function POST(req: NextRequest) {
       .from('wc_predictions')
       .upsert(
         {
-          wallet_address:  normalizedWallet,
-          prediction_key:  (predictionKey as string).trim(),
-          prediction_type: (predictionType as string).trim(),
-          selected_value:  selectedValue,
-          xp_reward:       xpReward as number,
-          status:          'pending',
-          deadline:        deadlineTs,
-          commitment_hash: commitmentHash,
-          updated_at:      new Date().toISOString(),
+          wallet_address:    normalizedWallet,
+          prediction_key:    cleanKey,
+          prediction_type:   (predictionType as string).trim(),
+          selected_value:    selectedValue,
+          xp_reward:         xpReward as number,
+          status:            'pending',
+          deadline:          deadlineTs,
+          commitment_hash:   commitmentHash,
+          submitted_onchain: true,
+          tx_hash:           (txHash as string).toLowerCase(),
+          updated_at:        new Date().toISOString(),
         },
         { onConflict: 'wallet_address,prediction_key' },
       )
@@ -180,9 +183,7 @@ export async function POST(req: NextRequest) {
       return err('Failed to save WC prediction', 500)
     }
 
-    // ── Badge check (fire-and-forget — never blocks the main response) ────────
-    // WC route doesn't upsert a profile, so we fetch it here (lightweight).
-    // Fails silently if profile doesn't exist yet or badge award errors.
+    // ── Badge check (fire-and-forget) ─────────────────────────────────────────
     try {
       const { data: wcProfile } = await supabase
         .from('profiles')
@@ -211,7 +212,6 @@ export async function POST(req: NextRequest) {
         status:        data.status,
         updatedAt:     data.updated_at,
       },
-      walletAuth,
     })
   } catch (e) {
     console.error('[POST /api/wc-predictions] unhandled:', e)

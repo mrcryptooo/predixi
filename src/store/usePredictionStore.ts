@@ -9,14 +9,14 @@ import { submitPredictionToApi } from "@/lib/api/predictions";
 // State shape
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Signed proof params produced by the wallet before Supabase sync — Phase 4D */
-export interface SignedProof {
-  /** The canonical message that was signed (buildPredictionMessage output) */
-  message: string
-  /** EIP-191 hex signature returned by the wallet */
-  signature: string
-  /** ISO timestamp embedded in the message */
-  signedAt: string
+/** On-chain TX proof produced by submitting to Base before Supabase sync */
+export interface TxProof {
+  /** Confirmed Base transaction hash from submitCommitment() */
+  txHash: string
+  /** crypto.randomUUID() generated client-side before the TX */
+  clientNonce: string
+  /** ISO timestamp generated client-side before the TX */
+  clientTimestamp: string
 }
 
 interface PredictionState {
@@ -56,22 +56,20 @@ interface PredictionState {
 
   /**
    * Persist a prediction to Supabase via /api/predictions.
+   * Requires a confirmed Base txHash — the API verifies the on-chain event.
    * Non-blocking — local state is updated by setPrediction before calling this.
    * If the API fails, persistError is set but the UI is never crashed.
-   *
-   * Phase 4D: requires a signed proof.  The modal signs the message with the
-   * connected wallet before calling this — signing rejection is handled there.
    *
    * @param matchId        The match being predicted
    * @param outcome        The chosen outcome
    * @param walletAddress  The connected wallet address (0x...)
-   * @param signed         Wallet signature proof (message + signature + signedAt)
+   * @param txProof        On-chain TX proof (txHash + clientNonce + clientTimestamp)
    */
   persistPrediction: (
     matchId: string,
     outcome: MatchOutcome,
     walletAddress: string,
-    signed: SignedProof,
+    txProof: TxProof,
   ) => Promise<boolean>;
 
   // ── Selectors (plain functions on state) ───────────────────────────────────
@@ -127,16 +125,16 @@ export const usePredictionStore = create<PredictionState>()(
 
       setPersistError: (error) => set({ persistError: error }),
 
-      persistPrediction: async (matchId, outcome, walletAddress, signed) => {
+      persistPrediction: async (matchId, outcome, walletAddress, txProof) => {
         set({ persistError: null });
 
         const result = await submitPredictionToApi({
           walletAddress,
           matchId,
           outcome,
-          message:   signed.message,
-          signature: signed.signature,
-          signedAt:  signed.signedAt,
+          txHash:          txProof.txHash,
+          clientNonce:     txProof.clientNonce,
+          clientTimestamp: txProof.clientTimestamp,
         });
 
         if (!result.success) {

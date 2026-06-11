@@ -236,16 +236,9 @@ export async function fetchDailyXIEntryMeta(
 }
 
 /**
- * Persist the current Daily XI slots to Supabase.
- * Fire-and-forget — never throws. localStorage must be saved before calling.
- *
- * auth.message + auth.signature are required by the backend (Phase 2).
- * Pass the EIP-191 signed message and its hex signature from the wallet.
- */
-/**
  * Persist the Daily XI slots to Supabase.
- * Returns { commitmentHash } from the POST response so the caller can
- * show the Anchor on Base button immediately without a separate meta refetch.
+ * Transaction-first: requires a confirmed Base txHash from submitCommitment().
+ * The backend verifies the on-chain event before saving.
  * Throws on network failure or non-ok HTTP response with the server's error message.
  * localStorage must already be saved before calling this.
  */
@@ -253,14 +246,9 @@ export async function saveDailyXIRemote(
   walletAddress: string,
   players: (DailyXIPlayer | null)[],
   date?: string,
-  auth?: { message: string; signature: string },
+  txHash?: string,
 ): Promise<{ commitmentHash: string | null }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  // HTTP header values cannot contain newlines (RFC 7230) — the auth message is
-  // a multiline string joined with \n.  encodeURIComponent makes it header-safe.
-  // The server decodes with decodeURIComponent before signature verification.
-  if (auth?.message)   headers["x-wallet-message"]   = encodeURIComponent(auth.message);
-  if (auth?.signature) headers["x-wallet-signature"] = auth.signature;
 
   let res: Response;
   try {
@@ -272,6 +260,7 @@ export async function saveDailyXIRemote(
         players,
         ...(date ? { entryDate: date } : {}),
         projectedMaxXp: 20,
+        ...(txHash ? { txHash } : {}),
       }),
     });
   } catch (fetchErr) {

@@ -147,23 +147,26 @@ function PitchSVG() {
 export function DailyXIPitch({
   slots,
   onReset,
-  earnedXp    = 0,
-  status      = 'pending',
+  earnedXp       = 0,
+  status         = 'pending',
   onSubmit,
-  submitting  = false,
-  submitted   = false,
-  isConnected = false,
+  submitting     = false,
+  submittingLabel,
+  submitted      = false,
+  isConnected    = false,
   submitError,
 }: {
-  slots:             (DailyXIPlayer | null)[];
-  onReset?:          () => void;
-  earnedXp?:         number;
-  status?:           string;
-  onSubmit?:    () => void;
-  submitting?:  boolean;
-  submitted?:   boolean;
-  isConnected?: boolean;
-  submitError?: string | null;
+  slots:              (DailyXIPlayer | null)[];
+  onReset?:           () => void;
+  earnedXp?:          number;
+  status?:            string;
+  onSubmit?:          () => void;
+  submitting?:        boolean;
+  /** Button label override while submitting — e.g. "Sending to Base…" */
+  submittingLabel?:   string;
+  submitted?:         boolean;
+  isConnected?:       boolean;
+  submitError?:       string | null;
 }) {
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
 
@@ -361,7 +364,7 @@ export function DailyXIPitch({
             )}
           >
             <Send size={14} className={cn(submitting && "animate-pulse")} />
-            {submitting ? "Submitting…" : "Submit Final XI"}
+            {submitting ? (submittingLabel ?? "Submitting…") : "Submit Final XI"}
           </button>
           {submitError && (
             <p className="text-[10px] font-mono text-danger/60 text-center">{submitError}</p>

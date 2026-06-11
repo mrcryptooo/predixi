@@ -4,9 +4,12 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Zap, Clock, X, ChevronRight, Lock } from "lucide-react";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
-import { useAccount, useSignMessage } from "wagmi";
-import { buildPredixiAuthMessage, generateNonce } from "@/lib/auth/wallet-signature";
+import { useAccount, usePublicClient } from "wagmi";
+import { base } from "wagmi/chains";
 import { cn } from "@/lib/utils";
+import { useSubmitToBase } from "@/hooks/useSubmitToBase";
+import { createWCCommitment } from "@/lib/onchain/commitment";
+import { buildCommitmentContext } from "@/lib/onchain/commitmentRegistry";
 import {
   saveWCPrediction,
   loadAllWCPredictions,
@@ -183,7 +186,8 @@ function derivePredictionType(id: string): string {
 
 export function WorldCupPredictionCard({ prediction, delay = 0, compact = false }: Props) {
   const { address, isConnected } = useAccount();
-  const { signMessageAsync }    = useSignMessage();
+  const publicClient             = usePublicClient({ chainId: base.id });
+  const { submitAsync }          = useSubmitToBase();
 
   const [isOpen,   setIsOpen]   = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -228,30 +232,43 @@ export function WorldCupPredictionCard({ prediction, delay = 0, compact = false 
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    // 1. Save to localStorage immediately — this is always the source of truth
+    // 1. Save to localStorage immediately — always the source of truth
     saveWCPrediction({ predictionId: prediction.id, selection: selected, savedAt: new Date().toISOString() });
     setSaved(selected);
     setIsOpen(false);
-    // 2. If wallet connected, sign + persist to Supabase (fire-and-forget)
-    //    Sign after modal closes so the wallet popup doesn't block the UI.
+    // 2. If wallet connected, submit TX + persist to Supabase in background.
+    //    Runs after modal closes — user sees their pick immediately.
+    //    Silently ignored on failure; localStorage is always authoritative.
     if (isConnected && address) {
       const selectionSnapshot = [...selected];
-      const nonce   = generateNonce();
-      const message = buildPredixiAuthMessage(address, 'wc-prediction', nonce);
-      signMessageAsync({ message })
-        .then(signature =>
-          saveWCPredictionRemote({
-            walletAddress:   address,
-            predictionKey:   prediction.id,
-            predictionType:  derivePredictionType(prediction.id),
-            selectedValue:   selectionSnapshot,
-            xpReward:        prediction.xpReward,
-            deadline:        prediction.deadline ?? null,
-            walletMessage:   message,
-            walletSignature: signature,
-          }),
-        )
-        .catch(() => {/* silent — localStorage is the source of truth */});
+      const predId            = prediction.id;
+      const predXp            = prediction.xpReward;
+      const predDeadline      = prediction.deadline ?? null;
+      const predType          = derivePredictionType(prediction.id);
+      ;(async () => {
+        try {
+          const { commitmentHash } = createWCCommitment({
+            walletAddress: address,
+            predictionKey: predId,
+            selectedValue: selectionSnapshot,
+            xpReward:      predXp,
+          });
+          const context = buildCommitmentContext('wc-prediction', predId);
+          const txHash  = await submitAsync({ commitmentHash, context });
+          await publicClient!.waitForTransactionReceipt({ hash: txHash });
+          await saveWCPredictionRemote({
+            walletAddress:  address,
+            predictionKey:  predId,
+            predictionType: predType,
+            selectedValue:  selectionSnapshot,
+            xpReward:       predXp,
+            deadline:       predDeadline,
+            txHash,
+          });
+        } catch {
+          // Silent — localStorage pick is already saved and shown to the user
+        }
+      })();
     }
   };
 

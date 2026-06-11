@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Lock, CheckCircle2, Clock, MapPin, Zap, CloudOff, PenLine, Share2, Copy, Check } from "lucide-react";
+import { X, Lock, CheckCircle2, Clock, MapPin, Zap, CloudOff, Share2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePredictionStore } from "@/store/usePredictionStore";
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
+import { base } from "wagmi/chains";
 import { OutcomeButton } from "./OutcomeButton";
 import { PointsPreview } from "./PointsPreview";
 import { TeamLogo } from "@/components/ui/TeamLogo";
 import { leagueMap } from "@/data/leagues";
-import { buildPredictionMessage } from "@/lib/prediction-message";
+import { useSubmitToBase } from "@/hooks/useSubmitToBase";
+import { createPredictionCommitment } from "@/lib/onchain/commitment";
+import { buildCommitmentContext } from "@/lib/onchain/commitmentRegistry";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { sharePrediction, isShareSupported } from "@/lib/base-app-actions";
 import type { Match, MatchOutcome } from "@/types";
@@ -66,7 +69,8 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
     persistError,
   } = usePredictionStore();
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const publicClient = usePublicClient({ chainId: base.id });
+  const { submitAsync, reset: resetTx } = useSubmitToBase();
 
   const existingPick  = getPrediction(match.id)?.outcome ?? null;
   const alreadyLocked = hasPredicted(match.id);
@@ -74,9 +78,11 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
   const [selected,   setSelected]  = useState<MatchOutcome | null>(existingPick);
   const [confirmed,  setConfirmed] = useState<boolean>(alreadyLocked);
   const [shaking,    setShaking]   = useState<boolean>(false);
-  const [syncing,    setSyncing]   = useState<boolean>(false);
-  const [signing,    setSigning]   = useState<boolean>(false);
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+
+  // TX flow step for UI labels
+  type TxStep = 'idle' | 'awaiting_wallet' | 'tx_pending' | 'saving';
+  const [txStep, setTxStep] = useState<TxStep>('idle');
 
   // Lock body scroll while modal is open — prevents background scroll in Base App webview
   useBodyScrollLock(true);
@@ -93,13 +99,7 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  // ── Note on auto-sync removal ──────────────────────────────────────────────
-  // Phase 4C had an auto-sync effect that would try to push an existing local
-  // prediction to Supabase when the modal opened with a connected wallet.
-  // Phase 4D removes this: Supabase writes now require an explicit wallet
-  // signature, and silently prompting for a signature on modal open would be
-  // poor UX.  Pre-existing local predictions remain local until the user
-  // makes a new prediction on that match (not possible once locked).
+  const isSubmitting = txStep !== 'idle';
 
   // ── Confirm prediction ─────────────────────────────────────────────────────
   async function handleConfirm() {
@@ -109,75 +109,66 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
       return;
     }
 
-    // Client-side kickoff guard — prevents local save for locked matches.
-    // Backend is the authoritative enforcer; this is a UX safeguard only.
     if (isLocked) {
       setPersistError("Predictions are locked after kickoff.");
       return;
     }
 
-    // Clear any stale error from a previous attempt before starting fresh.
+    if (isSubmitting) return; // guard double-submit
+
     clearPersistError();
 
-    // No wallet connected: save locally and lock immediately, no signing needed.
+    // No wallet: save locally and lock immediately — no TX needed.
     if (!isConnected || !address) {
       setPrediction(match.id, selected);
       setConfirmed(true);
       return;
     }
 
-    // Wallet connected: sign → POST → only lock on API success.
+    // Wallet connected: compute hash → submit TX → verify receipt → save to API.
+    const clientNonce     = crypto.randomUUID();
+    const clientTimestamp = new Date().toISOString();
+    const { commitmentHash } = createPredictionCommitment({
+      walletAddress:   address,
+      matchId:         match.id,
+      outcome:         toDbOutcome(selected),
+      clientTimestamp,
+      clientNonce,
+    });
+    const context = buildCommitmentContext('match-prediction', match.id);
+
+    resetTx();
+    setTxStep('awaiting_wallet');
+
     try {
-      setSigning(true);
-      const signedAt = new Date().toISOString();
-      const message  = buildPredictionMessage({
-        walletAddress: address,
-        matchId:       match.id,
-        outcome:       toDbOutcome(selected),
-        signedAt,
-      });
+      const txHash = await submitAsync({ commitmentHash, context });
+      setTxStep('tx_pending');
 
-      const signature = await signMessageAsync({ message });
-      setSigning(false);
+      // Wait for on-chain confirmation before sending to API
+      await publicClient!.waitForTransactionReceipt({ hash: txHash });
 
-      // POST to API — do NOT lock until this succeeds.
-      setSyncing(true);
+      setTxStep('saving');
       const ok = await persistPrediction(match.id, selected, address, {
-        message,
-        signature,
-        signedAt,
+        txHash,
+        clientNonce,
+        clientTimestamp,
       });
-      setSyncing(false);
 
       if (ok) {
-        // API confirmed the prediction — now safe to lock locally.
         setPrediction(match.id, selected);
         setConfirmed(true);
       }
-      // If !ok, persistError is already set inside persistPrediction; keep
-      // confirmed=false so user can see the error and retry.
-
+      // If !ok, persistError set inside persistPrediction — user can retry.
     } catch (rawErr) {
-      // signMessageAsync threw — either user rejected or wallet error.
-      // Do NOT lock: keep selected so the user can retry.
-      setSigning(false);
-      setSyncing(false);
-
       const errMsg = rawErr instanceof Error ? rawErr.message : String(rawErr);
-
-      const isUserRejection =
-        errMsg.includes("rejected") ||
-        errMsg.includes("denied") ||
-        errMsg.includes("cancelled") ||
-        errMsg.includes("canceled") ||
-        errMsg.includes("User rejected") ||
-        errMsg.includes("user rejected");
-
+      const isRejection = /rejected|denied|cancelled|canceled|user rejected/i.test(errMsg);
       setPersistError(
-        isUserRejection
-          ? "Signature declined — tap Confirm to try again."
-          : "Signing failed — tap Confirm to try again."
+        isRejection
+          ? "Transaction declined — tap Confirm to try again."
+          : "Transaction failed — tap Confirm to try again."
       );
+    } finally {
+      setTxStep('idle');
     }
   }
 
@@ -333,15 +324,22 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                 locked
               />
 
-              {/* Sync / profile status notice */}
-              {signing ? (
+              {/* TX / save status notice */}
+              {txStep === 'awaiting_wallet' ? (
                 <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
-                  <PenLine size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
+                  <Zap size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
                   <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
-                    Waiting for wallet signature…
+                    Confirm the transaction in your wallet…
                   </p>
                 </div>
-              ) : syncing ? (
+              ) : txStep === 'tx_pending' ? (
+                <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+                  <Zap size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
+                  <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
+                    Sending to Base… (~5s)
+                  </p>
+                </div>
+              ) : txStep === 'saving' ? (
                 <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
                   <Zap size={13} className="text-primary mt-0.5 flex-shrink-0 animate-pulse" />
                   <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
@@ -359,7 +357,7 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                 <div className="flex items-start gap-2.5 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
                   <Zap size={13} className="text-primary mt-0.5 flex-shrink-0" />
                   <p className="text-[11px] text-text-secondary font-mono leading-relaxed">
-                    Saved to your PrediXI profile. On-chain proof coming soon.
+                    Prediction recorded on Base and saved to your profile.
                   </p>
                 </div>
               ) : (
@@ -429,7 +427,7 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                 </div>
               )}
 
-              {/* Signature hint / retry error — wallet connected */}
+              {/* TX hint / retry error — wallet connected */}
               {!isLocked && isConnected && (
                 persistError ? (
                   <p className="text-[10px] text-warning/80 font-mono text-center">
@@ -437,7 +435,7 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                   </p>
                 ) : (
                   <p className="text-[10px] text-primary/70 font-mono text-center">
-                    Your wallet will sign a message to verify this prediction.
+                    Submitting sends a transaction to Base.
                   </p>
                 )
               )}
@@ -486,16 +484,23 @@ export function PredictionModal({ match, onClose }: PredictionModalProps) {
                 <button
                   type="button"
                   onClick={handleConfirm}
+                  disabled={isSubmitting}
                   className={cn(
                     "w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-150",
-                    selected
-                      ? "gradient-brand text-white shadow-lg hover:opacity-90"
-                      : "bg-elevated border border-border text-text-muted cursor-default"
+                    isSubmitting
+                      ? "bg-primary/20 border border-primary/30 text-primary/50 cursor-wait"
+                      : selected
+                        ? "gradient-brand text-white shadow-lg hover:opacity-90"
+                        : "bg-elevated border border-border text-text-muted cursor-default"
                   )}
                 >
-                  {selected
-                    ? `Confirm — ${selected === "home" ? match.homeTeam.shortName : selected === "away" ? match.awayTeam.shortName : "Draw"}`
-                    : "Select an outcome above"}
+                  {isSubmitting
+                    ? txStep === 'awaiting_wallet' ? "Confirm in wallet…"
+                    : txStep === 'tx_pending'      ? "Sending to Base…"
+                    : "Saving…"
+                    : selected
+                      ? `Confirm — ${selected === "home" ? match.homeTeam.shortName : selected === "away" ? match.awayTeam.shortName : "Draw"}`
+                      : "Select an outcome above"}
                 </button>
               ) : (
                 <button
