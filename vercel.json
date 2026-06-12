@@ -2,15 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/sync-wc-results",
-      "schedule": "*/3 * * * *"
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/cron/sync-wc-standings",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/auto-settle",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 23 * * *"
     },
     {
       "path": "/api/cron/score-daily-xi",
