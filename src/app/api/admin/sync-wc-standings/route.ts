@@ -132,7 +132,8 @@ export async function POST(req: NextRequest) {
       goal_diff:     entry.goalsDiff,
       form:          entry.form          ?? null,
       description:   entry.description   ?? null,
-    })
+      updated_at:    new Date().toISOString(),
+    } as InsertStanding & { updated_at: string })
   }
 
   const rows = Array.from(rowMap.values())
