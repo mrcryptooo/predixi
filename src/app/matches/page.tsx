@@ -3,10 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarDays, Info } from "lucide-react";
-import { leagues } from "@/data/leagues";
 import { usePredictionStore } from "@/store/usePredictionStore";
 import { MatchCard } from "@/components/matches/MatchCard";
-import { LeagueFilter } from "@/components/matches/LeagueFilter";
 import { StandingsTable } from "@/components/matches/StandingsTable";
 import { PredictionModal } from "@/components/prediction/PredictionModal";
 import { cn } from "@/lib/utils";
@@ -25,20 +23,6 @@ function apiTeam(name: string, shortName: string, leagueId: string, crest?: stri
   return { id: shortName.toLowerCase(), name, shortName, logo: "⚽", crest: crest ?? null, leagueId, city: "", country: "" };
 }
 
-// UCL 2026 Final — shown as supplement when no fd-* CL data exists
-const UCL_FINAL: Match = {
-  id:        "ucl-final-2026",
-  leagueId:  "champions-league",
-  homeTeam:  { id: "psg", name: "Paris Saint-Germain", shortName: "PSG", logo: "🔵", leagueId: "champions-league", city: "Paris", country: "France" },
-  awayTeam:  { id: "arsenal", name: "Arsenal FC", shortName: "ARS", logo: "🔴", leagueId: "champions-league", city: "London", country: "England" },
-  kickoff:   "2026-05-30T19:00:00Z",
-  status:    "upcoming",
-  homeScore: null,
-  awayScore: null,
-  matchday:  0,
-  venue:     "Puskás Aréna, Budapest",
-  community: { home: 40, draw: 22, away: 38 },
-};
 
 function apiToMatch(m: Record<string, unknown>): Match {
   const leagueId = LEAGUE_MAP[m.leagueId as string] ?? (m.leagueId as string);
@@ -74,7 +58,7 @@ const statusTabs: { id: StatusFilter; label: string; live?: boolean }[] = [
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WC_ONLY = process.env.NEXT_PUBLIC_WC_ONLY === 'true'
+const WC_ONLY = true
 
 export default function MatchesPage() {
   const [leagueFilter, setLeagueFilter] = useState<string>(WC_ONLY ? "world-cup-2026" : "all");
@@ -88,15 +72,11 @@ export default function MatchesPage() {
   const { getPrediction } = usePredictionStore();
 
   useEffect(() => {
-    fetch("/api/matches?source=fd&limit=100")
+    fetch("/api/matches?source=apf&limit=100")
       .then(r => r.ok ? r.json() : null)
       .then((data: { success: boolean; matches: Record<string, unknown>[] } | null) => {
         if (data?.success && data.matches.length > 0) {
-          const realMatches = data.matches.map(apiToMatch);
-          const realLeagues = new Set(realMatches.map(m => m.leagueId));
-          // Supplement only the UCL final if no real CL data exists
-          const supplement: Match[] = !realLeagues.has("champions-league") ? [UCL_FINAL] : [];
-          setMatches([...realMatches, ...supplement]);
+          setMatches(data.matches.map(apiToMatch));
           setDataSource("live");
         }
       })
@@ -214,25 +194,6 @@ export default function MatchesPage() {
 
           {/* ── Fixtures tab content ──────────────────────────────────────── */}
           {pageTab === "fixtures" && <>
-
-          {/* ── League filter (hidden in WC-only mode) ─────────────────── */}
-          {!WC_ONLY && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.32, ease: "easeOut", delay: 0.06 }}
-            className="space-y-2"
-          >
-            <p className="text-[10px] font-mono text-white/25 uppercase tracking-[0.14em] px-0.5">
-              League
-            </p>
-            <LeagueFilter
-              leagues={leagues}
-              selected={leagueFilter}
-              onChange={setLeagueFilter}
-            />
-          </motion.div>
-          )}
 
           {/* ── Status filter ─────────────────────────────────────────────── */}
           <motion.div
