@@ -1,28 +1,7 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/sync-wc-results",
-      "schedule": "*/3 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-wc-standings",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/auto-settle",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/score-daily-xi",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/sync-fixtures",
-      "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/cron/sync-standings",
-      "schedule": "0 1 * * *"
-    }
+    { "path": "/api/cron/score-daily-xi",  "schedule": "0 2 * * *"  },
+    { "path": "/api/cron/sync-fixtures",   "schedule": "30 0 * * *" },
+    { "path": "/api/cron/sync-standings",  "schedule": "0 1 * * *"  }
   ]
 }
