@@ -15,7 +15,6 @@ import { PredictionHistory } from "@/components/profile/PredictionHistory";
 import { BadgeCard } from "@/components/gamification/BadgeCard";
 import { AccentBar } from "@/components/ui/Card";
 import { DailyXIProfileCard } from "@/components/profile/DailyXIProfileCard";
-import { ActivityFeed }       from "@/components/profile/ActivityFeed";
 import { ReferralCard }       from "@/components/profile/ReferralCard";
 import { DailyStreak }        from "@/components/home/DailyStreak";
 import { loadAllWCPredictions, fetchWCPredictions } from "@/lib/worldcup-predictions";
@@ -419,7 +418,7 @@ export default function ProfilePage() {
       .catch(() => {})
       .finally(finish);
     // Build match metadata map for fd-* IDs
-    fetch(`/api/matches?source=fd&limit=100`)
+    fetch(`/api/matches?source=all&limit=100`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: { id: string; homeTeam: { shortName: string; crest?: string | null }; awayTeam: { shortName: string; crest?: string | null }; leagueId: string }[] } | null) => {
         if (!d) return;
@@ -682,12 +681,6 @@ export default function ProfilePage() {
             <section>
               <SectionHeader title="Referral Program" />
               <ReferralCard walletAddress={address} />
-            </section>
-
-            {/* ── Unified activity feed ─────────────────────────────────── */}
-            <section>
-              <SectionHeader title="Recent Activity" />
-              <ActivityFeed walletAddress={address!} matchMeta={matchMeta} />
             </section>
 
             {/* ── Prediction history ────────────────────────────────────── */}

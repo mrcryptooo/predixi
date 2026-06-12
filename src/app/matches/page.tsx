@@ -15,8 +15,7 @@ import type { Match, MatchStatus, Team } from "@/types";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LEAGUE_MAP: Record<string, string> = {
-  PL: "premier-league", PD: "la-liga", BL1: "bundesliga",
-  SA: "serie-a", FL1: "ligue-1", WC: "world-cup-2026", CL: "champions-league",
+  WC: "world-cup-2026",
 };
 
 function apiTeam(name: string, shortName: string, leagueId: string, crest?: string | null): Team {
@@ -58,10 +57,7 @@ const statusTabs: { id: StatusFilter; label: string; live?: boolean }[] = [
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WC_ONLY = true
-
 export default function MatchesPage() {
-  const [leagueFilter, setLeagueFilter] = useState<string>(WC_ONLY ? "world-cup-2026" : "all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeModal,  setActiveModal]  = useState<Match | null>(null);
   const [pageTab,      setPageTab]      = useState<"fixtures" | "standings">("fixtures");
@@ -84,19 +80,16 @@ export default function MatchesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = useMemo(() => matches.filter((m) => {
-    const leagueOk = leagueFilter === "all" || m.leagueId === leagueFilter;
-    const statusOk = statusFilter === "all" || m.status === statusFilter;
-    return leagueOk && statusOk;
-  }), [matches, leagueFilter, statusFilter]);
+  const filtered = useMemo(() =>
+    statusFilter === "all" ? matches : matches.filter(m => m.status === statusFilter)
+  , [matches, statusFilter]);
 
   const sorted = useMemo(() => {
     const order: Record<MatchStatus, number> = { live: 0, upcoming: 1, finished: 2, postponed: 3 };
     return [...filtered].sort((a, b) => order[a.status] - order[b.status]);
   }, [filtered]);
 
-  const liveCount = sorted.filter((m) => m.status === "live").length;
-  const isFiltered = leagueFilter !== "all" || statusFilter !== "all";
+  const isFiltered = statusFilter !== "all";
 
   return (
     <>
@@ -303,7 +296,7 @@ export default function MatchesPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setLeagueFilter("all"); setStatusFilter("all"); }}
+                  onClick={() => setStatusFilter("all")}
                   className="text-xs font-semibold text-primary hover:text-white transition-colors duration-150"
                 >
                   Clear all filters
