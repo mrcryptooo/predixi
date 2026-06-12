@@ -1,0 +1,26 @@
+# PrediXI WC Scheduler — Cloudflare Worker configuration
+#
+# One-time setup (run from this directory):
+#   npm install -g wrangler          # install CLI (skip if already installed)
+#   wrangler login                   # opens browser → log in to Cloudflare
+#   wrangler secret put CRON_SECRET  # paste the same value as Vercel CRON_SECRET
+#   wrangler deploy                  # deploy the worker
+#
+# After deploy: Cloudflare fires the cron triggers automatically forever.
+# Zero ongoing maintenance required.
+#
+# To verify it's running: Cloudflare Dashboard → Workers → predixi-wc-scheduler → Cron Triggers
+
+name              = "predixi-wc-scheduler"
+main              = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+# Production app URL — change if you ever move to a custom domain
+APP_URL = "https://predixi-base.vercel.app"
+
+# Cron triggers:
+#   every-3-minutes  — sync WC results (also triggers inline settlement via after())
+#   every-5-minutes  — sync WC group standings
+[triggers]
+crons = ["*/3 * * * *", "*/5 * * * *"]
