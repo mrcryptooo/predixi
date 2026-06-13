@@ -38,7 +38,7 @@ import type { StandingRow }               from '@/lib/supabase/types'
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const VALID_LEAGUE_IDS = new Set(['PL', 'PD', 'BL1', 'SA', 'FL1', 'CL'])
+const VALID_LEAGUE_IDS = new Set(['PL', 'PD', 'BL1', 'SA', 'FL1', 'CL', 'WC'])
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=60, s-maxage=300',

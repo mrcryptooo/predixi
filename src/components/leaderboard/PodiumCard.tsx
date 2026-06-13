@@ -6,6 +6,17 @@ import { cn } from "@/lib/utils";
 import { RankBadge } from "@/components/ui/Badge";
 import type { LeaderboardEntry } from "@/types";
 
+function PodiumMonogram({ initials, rank, ringClass }: { initials: string; rank: string; ringClass: string }) {
+  void rank;
+  return (
+    <div className={cn("w-14 h-14 rounded-2xl flex-shrink-0 ring-1 ring-offset-1 ring-offset-[#070b22]", ringClass)}>
+      <div className="w-full h-full rounded-2xl flex items-center justify-center bg-gradient-to-br from-primary/60 via-[#1a3a8f] to-[#060a1e] border border-primary/30">
+        <span className="text-base font-black text-white select-none">{(initials || "??").slice(0, 2).toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Medal config — distinct visual hierarchy per position
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,18 +60,17 @@ export function PodiumCard({ entry, isCurrentUser = false }: PodiumCardProps) {
       </div>
 
       {/* Avatar */}
-      <div className={cn(
-        "relative w-14 h-14 rounded-2xl border flex items-center justify-center text-2xl flex-shrink-0",
-        `bg-gradient-to-br ${m.avatarGlow} to-[#060810] border-white/10`,
-        isCurrentUser && "ring-2 ring-offset-1 ring-offset-[#0b0f28] ring-primary/60",
-        !isCurrentUser && `ring-1 ${m.ringColor}`,
-      )}>
+      <div className="relative flex-shrink-0">
         {isCurrentUser && (
           <span className="absolute -top-2 -right-2 text-[9px] font-mono font-bold bg-primary text-white px-1.5 py-0.5 rounded-md leading-none z-20">
             YOU
           </span>
         )}
-        <span className="relative z-10">{entry.avatar}</span>
+        <PodiumMonogram
+          initials={entry.initials}
+          rank={entry.rank}
+          ringClass={isCurrentUser ? "ring-primary/60" : m.ringColor}
+        />
       </div>
 
       {/* Name + flag */}

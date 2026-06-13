@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, Copy, CheckCheck, Zap, Link2 } from "lucide-react";
+import { Users, Copy, CheckCheck, Zap, Link2, UserPlus } from "lucide-react";
+import { useSignMessage } from "wagmi";
+import { buildPredixiAuthMessage, generateNonce } from "@/lib/auth/wallet-signature";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,9 +22,13 @@ type ReferralData = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ReferralCard({ walletAddress }: { walletAddress?: string }) {
-  const [data,    setData]    = useState<ReferralData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [copied,  setCopied]  = useState(false);
+  const [data,          setData]          = useState<ReferralData | null>(null);
+  const [loading,       setLoading]       = useState(false);
+  const [copied,        setCopied]        = useState(false);
+  const [enteredCode,   setEnteredCode]   = useState("");
+  const [registering,   setRegistering]   = useState(false);
+  const [registerMsg,   setRegisterMsg]   = useState<{ ok: boolean; text: string } | null>(null);
+  const { signMessageAsync } = useSignMessage();
 
   // Prefer window.location.origin for the link so it works on any deploy
   // (dev, staging, production). Falls back to API-provided link if window
@@ -53,6 +59,50 @@ export function ReferralCard({ walletAddress }: { walletAddress?: string }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [walletAddress]);
+
+  const handleRegister = useCallback(async () => {
+    if (!walletAddress || !enteredCode.trim() || registering) return;
+    setRegistering(true);
+    setRegisterMsg(null);
+    try {
+      const code    = enteredCode.trim().toUpperCase();
+      const nonce   = generateNonce();
+      const message = buildPredixiAuthMessage(walletAddress, "referral-register", nonce);
+      const signature = await signMessageAsync({ message });
+      const res = await fetch("/api/referrals/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-message": encodeURIComponent(message),
+          "x-wallet-signature": signature,
+        },
+        body: JSON.stringify({ referralCode: code }),
+      });
+      const json = await res.json() as { ok?: boolean; status?: string; error?: string };
+      if (json.ok) {
+        setRegisterMsg({ ok: true, text: json.status === "already_registered" ? "Already registered." : "Referral registered! +200 XP awarded to referrer." });
+        setEnteredCode("");
+      } else {
+        const errorMap: Record<string, string> = {
+          SELF_REFERRAL_NOT_ALLOWED:         "You can't use your own referral code.",
+          ALREADY_REFERRED_BY_ANOTHER_USER:  "You're already referred by someone else.",
+          ALREADY_ACTIVE_USER_CANNOT_BE_REFERRED: "Your account is too active to apply a referral code.",
+          REFERRAL_CODE_NOT_FOUND:           "Referral code not found.",
+          INVALID_REFERRAL_CODE:             "Invalid referral code format.",
+        };
+        setRegisterMsg({ ok: false, text: errorMap[json.error ?? ""] ?? (json.error ?? "Something went wrong.") });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("User rejected") || msg.includes("user rejected")) {
+        setRegisterMsg({ ok: false, text: "Signature cancelled." });
+      } else {
+        setRegisterMsg({ ok: false, text: "Failed to register. Try again." });
+      }
+    } finally {
+      setRegistering(false);
+    }
+  }, [walletAddress, enteredCode, registering, signMessageAsync]);
 
   const handleCopy = useCallback(() => {
     if (!data?.referralCode || copied) return;
@@ -184,6 +234,52 @@ export function ReferralCard({ walletAddress }: { walletAddress?: string }) {
         <p className="text-[11px] font-mono text-white/30 py-1">
           Referral code is being prepared.
         </p>
+      )}
+
+      {/* ── Enter a referral code ─────────────────────────────────────────── */}
+      {!data?.referralXp && (
+        <div className="space-y-2 border-t border-white/[0.05] pt-3">
+          <div className="flex items-center gap-1.5">
+            <UserPlus size={11} className="text-white/40 flex-shrink-0" />
+            <p className="text-[11px] text-white/40">Enter a friend&apos;s referral code</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={enteredCode}
+              onChange={e => { setEnteredCode(e.target.value.toUpperCase()); setRegisterMsg(null); }}
+              placeholder="XXXXXXXX"
+              maxLength={10}
+              className={cn(
+                "flex-1 min-w-0 px-3 py-2 rounded-xl text-xs font-mono tracking-widest uppercase",
+                "bg-white/[0.04] border border-white/[0.09] text-white placeholder:text-white/20",
+                "focus:outline-none focus:border-primary/40 focus:bg-primary/[0.05]",
+                "transition-colors duration-150",
+              )}
+            />
+            <button
+              type="button"
+              onClick={handleRegister}
+              disabled={!enteredCode.trim() || registering}
+              className={cn(
+                "flex-shrink-0 px-3 py-2 rounded-xl text-[10px] font-black tracking-wide transition-all duration-150",
+                !enteredCode.trim() || registering
+                  ? "bg-white/[0.05] border border-white/[0.07] text-white/20 cursor-not-allowed"
+                  : "bg-primary text-white shadow-[0_4px_14px_rgba(59,130,246,0.3)] hover:bg-primary/90 active:scale-95",
+              )}
+            >
+              {registering ? "…" : "Apply"}
+            </button>
+          </div>
+          {registerMsg && (
+            <p className={cn(
+              "text-[10px] font-mono leading-tight",
+              registerMsg.ok ? "text-green-400" : "text-red-400/80",
+            )}>
+              {registerMsg.text}
+            </p>
+          )}
+        </div>
       )}
 
       {/* ── Explanation ───────────────────────────────────────────────────── */}

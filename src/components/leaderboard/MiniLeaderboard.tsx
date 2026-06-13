@@ -8,6 +8,23 @@ import { cn } from "@/lib/utils";
 import { RankBadge } from "@/components/ui/Badge";
 import type { LeaderboardEntry } from "@/types";
 
+function LbMonogram({ initials, rank }: { initials: string; rank: string }) {
+  const ring =
+    rank === "legend"   ? "ring-[#1652F0]" :
+    rank === "diamond"  ? "ring-[#B9F2FF]/70" :
+    rank === "platinum" ? "ring-white/40" :
+    rank === "gold"     ? "ring-[#FFD700]/60" :
+    rank === "silver"   ? "ring-white/25" :
+                          "ring-primary/40";
+  return (
+    <div className={cn("w-9 h-9 rounded-xl flex-shrink-0 ring-1 ring-offset-1 ring-offset-[#070b22]", ring)}>
+      <div className="w-full h-full rounded-xl flex items-center justify-center bg-gradient-to-br from-primary/60 via-[#1a3a8f] to-[#060a1e] border border-primary/30">
+        <span className="text-[11px] font-black text-white select-none">{(initials || "??").slice(0, 2).toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Row
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,12 +59,7 @@ function LeaderboardRow({ entry, isCurrentUser = false, delay = 0 }: RowProps) {
       </div>
 
       {/* Avatar */}
-      <div className={cn(
-        "w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 border",
-        isCurrentUser ? "border-primary/30 bg-primary/10" : "border-border bg-surface"
-      )}>
-        {entry.avatar}
-      </div>
+      <LbMonogram initials={entry.initials} rank={entry.rank} />
 
       {/* Name + flag */}
       <div className="flex-1 min-w-0">

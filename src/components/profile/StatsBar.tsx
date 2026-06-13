@@ -26,19 +26,19 @@ function StatTile({ icon, label, value, sub, delay }: StatTileProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.30, ease: "easeOut", delay }}
       className={cn(
-        "flex flex-col gap-2.5 p-4 rounded-2xl",
+        "flex flex-col gap-1.5 p-2.5 rounded-xl",
         "bg-gradient-to-b from-[#0d1030] to-[#07091a]",
         "border border-primary/15"
       )}
     >
-      <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center">
+      <div className="w-5 h-5 rounded-md bg-primary/15 border border-primary/20 flex items-center justify-center">
         <span className="text-primary">{icon}</span>
       </div>
       <div>
-        <p className="font-mono font-black text-xl tabular-nums text-white leading-none">{value}</p>
-        {sub && <p className="text-[10px] font-mono text-white/30 mt-1 leading-tight">{sub}</p>}
+        <p className="font-mono font-black text-sm tabular-nums text-white leading-none">{value}</p>
+        {sub && <p className="text-[9px] font-mono text-white/30 mt-0.5 leading-tight">{sub}</p>}
       </div>
-      <p className="text-[11px] text-white/40 font-medium leading-tight">{label}</p>
+      <p className="text-[10px] text-white/40 font-medium leading-tight">{label}</p>
     </motion.div>
   );
 }
@@ -77,56 +77,56 @@ export function StatsBar({
 
   const tiles: (StatTileProps)[] = [
     {
-      icon:  <CalendarDays size={14} />,
+      icon:  <CalendarDays size={11} />,
       label: "Total Predictions",
       value: totalPredictions.toLocaleString(),
       sub:   `${correctPredictions} correct`,
       delay: 0.04,
     },
     {
-      icon:  <Target size={14} />,
+      icon:  <Target size={11} />,
       label: "Accuracy",
       value: `${accuracy}%`,
       sub:   "Correct rate",
       delay: 0.08,
     },
     {
-      icon:  <Zap size={14} />,
+      icon:  <Zap size={11} />,
       label: "Total XP",
       value: xp.toLocaleString(),
       sub:   "All-time",
       delay: 0.12,
     },
     {
-      icon:  <TrendingUp size={14} />,
+      icon:  <TrendingUp size={11} />,
       label: "Weekly XP",
       value: weeklyXp.toLocaleString(),
       sub:   "This week",
       delay: 0.16,
     },
     {
-      icon:  <Flame size={14} />,
+      icon:  <Flame size={11} />,
       label: "Win Streak",
       value: streak.toString(),
       sub:   streakLabel,
       delay: 0.20,
     },
     {
-      icon:  <BarChart3 size={14} />,
+      icon:  <BarChart3 size={11} />,
       label: "Best Streak",
       value: streak >= 11 ? `${streak}` : "11",
       sub:   "Personal best",
       delay: 0.24,
     },
     {
-      icon:  <Trophy size={14} />,
+      icon:  <Trophy size={11} />,
       label: "Global Rank",
       value: globalRank > 0 ? `#${globalRank}` : '—',
       sub:   "PrediXI board",
       delay: 0.28,
     },
     {
-      icon:  <Globe size={14} />,
+      icon:  <Globe size={11} />,
       label: "Member Since",
       value: season,
       sub:   "Season 1",
@@ -135,7 +135,7 @@ export function StatsBar({
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
       {tiles.map((tile) => (
         <StatTile key={tile.label} {...tile} />
       ))}

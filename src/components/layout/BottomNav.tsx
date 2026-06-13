@@ -36,7 +36,7 @@ export function BottomNav() {
               className={cn(
                 "relative flex-1 flex flex-col items-center justify-center gap-[3px]",
                 "transition-all duration-200 select-none",
-                active ? "text-primary" : "text-white/35 hover:text-white/60"
+                active ? "text-primary" : "text-white hover:text-white/80"
               )}
             >
               {/* Active glow pill at top of item */}
@@ -50,11 +50,11 @@ export function BottomNav() {
               )}
 
               <Icon
-                size={20}
-                strokeWidth={active ? 2.5 : 1.75}
+                size={22}
+                strokeWidth={active ? 2.5 : 2}
                 className={cn(
                   "relative z-10 transition-all duration-200",
-                  active ? "scale-[1.08] drop-shadow-[0_0_8px_rgba(22,82,240,0.70)]" : "",
+                  active ? "scale-[1.10] drop-shadow-[0_0_12px_rgba(22,82,240,0.95)]" : "",
                 )}
               />
 

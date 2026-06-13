@@ -6,6 +6,23 @@ import { cn } from "@/lib/utils";
 import { RankBadge } from "@/components/ui/Badge";
 import type { LeaderboardEntry } from "@/types";
 
+function LbMonogram({ initials, rank, highlight }: { initials: string; rank: string; highlight: boolean }) {
+  void rank;
+  return (
+    <div className={cn(
+      "w-9 h-9 rounded-xl flex-shrink-0 ring-1 ring-offset-1 ring-offset-[#070b22]",
+      highlight ? "ring-primary/60" : "ring-primary/30",
+    )}>
+      <div className={cn(
+        "w-full h-full rounded-xl flex items-center justify-center border",
+        highlight ? "bg-primary/20 border-primary/35" : "bg-gradient-to-br from-primary/50 via-[#1a3a8f] to-[#060a1e] border-primary/25",
+      )}>
+        <span className="text-[11px] font-black text-white select-none">{(initials || "??").slice(0, 2).toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,14 +79,7 @@ function TableRow({ entry, isCurrentUser, delay }: RowProps) {
       </div>
 
       {/* Avatar */}
-      <div className={cn(
-        "w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 border",
-        isCurrentUser
-          ? "border-primary/35 bg-primary/12"
-          : "border-white/[0.08] bg-white/[0.04]",
-      )}>
-        {entry.avatar}
-      </div>
+      <LbMonogram initials={entry.initials} rank={entry.rank} highlight={isCurrentUser} />
 
       {/* Name + rank + streak */}
       <div className="flex-1 min-w-0">

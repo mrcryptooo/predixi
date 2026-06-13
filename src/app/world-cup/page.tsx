@@ -254,9 +254,27 @@ type RealMatch = {
   homeTeam: { name: string; shortName: string; crest?: string | null };
   awayTeam: { name: string; shortName: string; crest?: string | null };
   kickoffTime: string; status: string; venue: string | null;
+  homeScore?: number | null;
+  awayScore?: number | null;
+};
+
+type WcStanding = {
+  teamName: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  points: number;
 };
 
 function RealWcRow({ m, delay }: { m: RealMatch; delay: number }) {
+  const isFinished = m.status === "finished" || m.status === "FINISHED";
+  const isLive     = m.status === "live"     || m.status === "LIVE" || m.status === "IN_PLAY";
+  const hasScore   = isFinished || isLive;
+
   const date = new Date(m.kickoffTime).toLocaleString("en-GB", {
     weekday: "short", day: "numeric", month: "short",
     hour: "2-digit", minute: "2-digit", timeZone: "UTC", hour12: false,
@@ -266,18 +284,30 @@ function RealWcRow({ m, delay }: { m: RealMatch; delay: number }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut", delay }}
-      className="flex items-center justify-between px-4 py-3 rounded-xl border bg-white/[0.03] border-white/[0.07]"
+      className={cn(
+        "flex items-center justify-between px-4 py-3 rounded-xl border",
+        isLive
+          ? "bg-primary/[0.06] border-primary/25"
+          : "bg-white/[0.03] border-white/[0.07]",
+      )}
     >
       <div className="flex items-center gap-2 min-w-0">
         <TeamLogo src={m.homeTeam.crest} name={m.homeTeam.shortName} size="sm" />
         <span className="text-xs font-bold text-white/80 font-mono">{m.homeTeam.shortName}</span>
-        <span className="text-[10px] text-white/30 font-mono">vs</span>
+        {hasScore ? (
+          <span className="text-sm font-black text-white font-mono tabular-nums px-1.5 py-0.5 rounded bg-white/[0.07]">
+            {m.homeScore ?? 0}–{m.awayScore ?? 0}
+          </span>
+        ) : (
+          <span className="text-[10px] text-white/30 font-mono">vs</span>
+        )}
         <span className="text-xs font-bold text-white/80 font-mono">{m.awayTeam.shortName}</span>
         <TeamLogo src={m.awayTeam.crest} name={m.awayTeam.shortName} size="sm" />
+        {isLive && <span className="text-[8px] font-black text-red-400 uppercase tracking-wider animate-pulse ml-1">LIVE</span>}
       </div>
       <div className="text-right flex-shrink-0 ml-3">
-        <p className="text-[10px] text-white/40 font-mono">{date}</p>
-        {m.venue && <p className="text-[9px] text-white/20 font-mono mt-0.5 truncate max-w-[120px]">{m.venue}</p>}
+        <p className="text-[10px] text-white/40 font-mono">{isFinished ? "FT" : date}</p>
+        {m.venue && !isFinished && <p className="text-[9px] text-white/20 font-mono mt-0.5 truncate max-w-[120px]">{m.venue}</p>}
       </div>
     </motion.div>
   );
@@ -359,9 +389,10 @@ function toPlayerOption(p: ApiPlayer): SelectionOption {
 }
 
 export default function WorldCupPage() {
-  const [wcMatches,  setWcMatches]  = useState<RealMatch[]>([]);
-  const [dataSource, setDataSource] = useState<"live" | "fallback">("fallback");
-  const [crestMap,   setCrestMap]   = useState<Record<string, string>>({});
+  const [wcMatches,    setWcMatches]    = useState<RealMatch[]>([]);
+  const [dataSource,   setDataSource]   = useState<"live" | "fallback">("fallback");
+  const [crestMap,     setCrestMap]     = useState<Record<string, string>>({});
+  const [standingsMap, setStandingsMap] = useState<Record<string, WcStanding>>({});
 
   // ── DB-backed player pools — initial values are the static fallbacks ────────
   // When the DB fetch succeeds, these update with real player photos from APF.
@@ -398,7 +429,7 @@ export default function WorldCupPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/matches?source=fd&limit=100")
+    fetch("/api/matches?source=fd&limit=200&includePast=true")
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: (RealMatch & { leagueId?: string })[] } | null) => {
         if (!d) return;
@@ -413,6 +444,18 @@ export default function WorldCupPage() {
           }
           setCrestMap(map);
         }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/standings?leagueId=WC&season=2026")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { ok: boolean; standings: WcStanding[] } | null) => {
+        if (!d?.ok || !d.standings?.length) return;
+        const map: Record<string, WcStanding> = {};
+        for (const s of d.standings) map[s.teamName] = s;
+        setStandingsMap(map);
       })
       .catch(() => {});
   }, []);
@@ -528,25 +571,51 @@ export default function WorldCupPage() {
 
         {/* ── Official Groups ───────────────────────────────────────────────── */}
         <section>
-          <SectionHeader title="Official Groups" sub="Official group composition · Standings from Jun 11, 2026" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <SectionHeader title="Official Groups" sub="Live standings · P W D L GF GA GD Pts" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {worldCupGroups.map((group, gi) => (
               <motion.div key={group.name}
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.22, ease: "easeOut", delay: gi * 0.04 }}
-                className="rounded-xl border px-3 py-3 space-y-2 bg-white/[0.03] border-white/[0.07] hover:border-primary/25 hover:bg-primary/[0.04] transition-colors duration-150"
+                transition={{ duration: 0.22, ease: "easeOut", delay: gi * 0.03 }}
+                className="rounded-xl border px-3 py-3 bg-white/[0.03] border-white/[0.07]"
               >
-                <p className="text-[10px] font-black text-primary/70 uppercase tracking-widest font-mono">
+                <p className="text-[10px] font-black text-primary/70 uppercase tracking-widest font-mono mb-2">
                   {group.name}
                 </p>
-                <div className="space-y-1.5">
-                  {group.teams.map(team => (
-                    <div key={team.shortCode} className="flex items-center gap-1.5 min-w-0">
-                      <TeamLogo src={resolveCrest(team.name, team.shortCode, crestMap)} name={team.name} size="sm" />
-                      <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
-                      <span className="text-[11px] font-semibold text-white/70 truncate leading-tight">{team.name}</span>
-                    </div>
+                {/* Header row */}
+                <div className="flex items-center gap-1 px-1 mb-1">
+                  <div className="flex-1 min-w-0" />
+                  {["P","W","D","L","GF","GA","GD","Pts"].map(h => (
+                    <span key={h} className="w-5 text-center text-[8px] font-mono text-white/25 flex-shrink-0">{h}</span>
                   ))}
+                </div>
+                <div className="space-y-1">
+                  {group.teams.map(team => {
+                    const s = standingsMap[team.name];
+                    return (
+                      <div key={team.shortCode} className="flex items-center gap-1 px-1">
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <span className="text-[11px] leading-none flex-shrink-0">{team.flag}</span>
+                          <span className="text-[10px] font-semibold text-white/70 truncate leading-tight">{team.name}</span>
+                        </div>
+                        {s ? (
+                          <>
+                            {[s.played, s.won, s.drawn, s.lost, s.goalsFor, s.goalsAgainst, s.goalDiff].map((v, i) => (
+                              <span key={i} className="w-5 text-center text-[10px] font-mono text-white/45 flex-shrink-0 tabular-nums">{v}</span>
+                            ))}
+                            <span className="w-5 text-center text-[10px] font-black font-mono text-white flex-shrink-0 tabular-nums">{s.points}</span>
+                          </>
+                        ) : (
+                          <>
+                            {Array.from({length: 7}, (_, i) => (
+                              <span key={i} className="w-5 text-center text-[10px] font-mono text-white/20 flex-shrink-0">0</span>
+                            ))}
+                            <span className="w-5 text-center text-[10px] font-black font-mono text-white/20 flex-shrink-0">0</span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </motion.div>
             ))}
