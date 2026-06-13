@@ -26,19 +26,17 @@ function StatTile({ icon, label, value, sub, delay }: StatTileProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.30, ease: "easeOut", delay }}
       className={cn(
-        "flex flex-col gap-1.5 p-2.5 rounded-xl",
+        "flex flex-col gap-1 p-1.5 rounded-lg",
         "bg-gradient-to-b from-[#0d1030] to-[#07091a]",
         "border border-primary/15"
       )}
     >
-      <div className="w-5 h-5 rounded-md bg-primary/15 border border-primary/20 flex items-center justify-center">
+      <div className="w-4 h-4 rounded bg-primary/15 border border-primary/20 flex items-center justify-center flex-shrink-0">
         <span className="text-primary">{icon}</span>
       </div>
-      <div>
-        <p className="font-mono font-black text-sm tabular-nums text-white leading-none">{value}</p>
-        {sub && <p className="text-[9px] font-mono text-white/30 mt-0.5 leading-tight">{sub}</p>}
-      </div>
-      <p className="text-[10px] text-white/40 font-medium leading-tight">{label}</p>
+      <p className="font-mono font-black text-[11px] tabular-nums text-white leading-none">{value}</p>
+      <p className="text-[9px] text-white/40 font-medium leading-tight">{label}</p>
+      {sub && <p className="hidden sm:block text-[8px] font-mono text-white/25 leading-tight">{sub}</p>}
     </motion.div>
   );
 }

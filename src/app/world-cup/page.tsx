@@ -270,6 +270,16 @@ type WcStanding = {
   points: number;
 };
 
+// DB team_name → static worldCupGroups team.name aliases
+// Needed because the standings API returns DB names that differ from static data names.
+const STANDINGS_DB_ALIASES: Record<string, string[]> = {
+  "Bosnia & Herzegovina": ["Bosnia-Herzegovina"],
+  "Iran":                 ["IR Iran"],
+  "Cape Verde Islands":   ["Cape Verde"],
+  "Congo DR":             ["DR Congo"],
+  "USA":                  ["United States"],
+};
+
 function RealWcRow({ m, delay }: { m: RealMatch; delay: number }) {
   const isFinished = m.status === "finished" || m.status === "FINISHED";
   const isLive     = m.status === "live"     || m.status === "LIVE" || m.status === "IN_PLAY";
@@ -454,7 +464,12 @@ export default function WorldCupPage() {
       .then((d: { ok: boolean; standings: WcStanding[] } | null) => {
         if (!d?.ok || !d.standings?.length) return;
         const map: Record<string, WcStanding> = {};
-        for (const s of d.standings) map[s.teamName] = s;
+        for (const s of d.standings) {
+          map[s.teamName] = s;
+          for (const alias of (STANDINGS_DB_ALIASES[s.teamName] ?? [])) {
+            map[alias] = s;
+          }
+        }
         setStandingsMap(map);
       })
       .catch(() => {});

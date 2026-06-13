@@ -85,7 +85,7 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
         {/* Ambient glow */}
         <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-primary opacity-[0.08] blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex justify-center">
+        <div className="relative z-10 flex">
           <MonogramAvatar initials={user.initials} rank={user.rank} />
         </div>
       </div>
