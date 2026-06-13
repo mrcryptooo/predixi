@@ -202,32 +202,46 @@ function XPLedgerPreview({ walletAddress }: { walletAddress?: string }) {
 
   useEffect(() => {
     if (!walletAddress) return;
-    setLoading(true);
-    fetchXPEvents(walletAddress)
-      .then(data => {
-        setLedger(data);
-        // Create a local notification for the newest XP event (dedup by sourceId)
-        if (data && data.events.length > 0) {
-          const newest = data.events[0];
-          if (newest.xpAmount > 0) {
-            const { title, message } = formatNotificationMessage({
-              type:      'xp_awarded',
-              xpAmount:  newest.xpAmount,
-              reason:    newest.reason,
-            });
-            const notif = createNotification({
-              type:     'xp_awarded',
-              title,
-              message,
-              sourceId: newest.id,   // dedup key — same event never added twice
-              xpAmount: newest.xpAmount,
-            });
-            addNotification(notif);  // no-op if sourceId already stored
+
+    let cancelled = false;
+
+    const load = (showSpinner: boolean) => {
+      if (showSpinner) setLoading(true);
+      fetchXPEvents(walletAddress)
+        .then(data => {
+          if (cancelled) return;
+          setLedger(data);
+          // Create a local notification for the newest XP event (dedup by sourceId)
+          if (data && data.events.length > 0) {
+            const newest = data.events[0];
+            if (newest.xpAmount > 0) {
+              const { title, message } = formatNotificationMessage({
+                type:      'xp_awarded',
+                xpAmount:  newest.xpAmount,
+                reason:    newest.reason,
+              });
+              const notif = createNotification({
+                type:     'xp_awarded',
+                title,
+                message,
+                sourceId: newest.id,   // dedup key — same event never added twice
+                xpAmount: newest.xpAmount,
+              });
+              addNotification(notif);  // no-op if sourceId already stored
+            }
           }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+        })
+        .catch(() => {})
+        .finally(() => { if (showSpinner && !cancelled) setLoading(false); });
+    };
+
+    load(true);
+    const interval = setInterval(() => load(false), 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [walletAddress]);
 
   if (!walletAddress) return null;

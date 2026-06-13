@@ -112,29 +112,34 @@ export default function LeaderboardPage() {
           transition={{ duration: 0.32, ease: "easeOut", delay: 0.06 }}
           className={cn(
             "relative overflow-hidden rounded-2xl border",
-            "border-warning/25 bg-gradient-to-r from-warning/[0.07] via-[#0c0f22] to-bg",
+            "border-warning/30 bg-gradient-to-br from-warning/[0.10] via-[#0c0f22] to-bg",
+            "shadow-[0_0_28px_rgba(255,170,0,0.08)]",
           )}
         >
-          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/35 to-transparent" />
-          <div className="flex items-start gap-3.5 px-4 py-3.5">
-            <div className="w-8 h-8 rounded-xl bg-warning/10 border border-warning/20 flex items-center justify-center flex-shrink-0">
-              <Gift size={14} className="text-warning/75" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-bold text-warning/75 uppercase tracking-wider">
-                  World Cup 2026 Prize
-                </span>
-                <span className="text-[9px] font-mono text-white/20 border border-white/[0.08] px-1.5 py-0.5 rounded-md">
-                  Ends 19 Jul 2026
-                </span>
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/50 to-transparent" />
+          <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-warning opacity-[0.05] blur-2xl pointer-events-none" />
+          <div className="px-5 py-4 space-y-3 relative z-10">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-warning/12 border border-warning/22 flex items-center justify-center flex-shrink-0">
+                  <Gift size={15} className="text-warning/80" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-warning/85 uppercase tracking-wider">
+                      World Cup 2026 Prize
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-mono text-white/30 mt-0.5">Ends 19 Jul 2026</p>
+                </div>
               </div>
-              <p className="text-xs text-white/55 mt-1 leading-relaxed">
-                Top <span className="text-white font-semibold">11 users</span> on this leaderboard receive the{" "}
-                <span className="text-white font-semibold">football jersey of their choice</span>.
-                Keep predicting to climb.
-              </p>
+              <span className="text-2xl flex-shrink-0">⚽</span>
             </div>
+            <p className="text-sm text-white/60 leading-relaxed">
+              The <span className="text-white font-bold">top 11 predictors</span> on this leaderboard
+              win a <span className="text-warning/90 font-bold">football jersey of their choice</span>.
+              Predict every match to climb.
+            </p>
           </div>
         </motion.div>
 

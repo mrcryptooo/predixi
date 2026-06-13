@@ -239,7 +239,7 @@ export default function Home() {
   }, [address]);
 
   useEffect(() => {
-    fetch("/api/matches?source=fd&limit=10")
+    fetch("/api/matches?source=apf&limit=10")
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: Record<string, unknown>[] } | null) => {
         if (!d?.matches?.length) return;
@@ -258,8 +258,8 @@ export default function Home() {
   const liveCount = matches.filter(m => m.status === "live").length;
 
   const matchSectionTitle = liveCount > 0
-    ? `Live Now · ${liveCount} match${liveCount > 1 ? "es" : ""}`
-    : "Upcoming Matches";
+    ? `WC · Live Now · ${liveCount} match${liveCount > 1 ? "es" : ""}`
+    : "World Cup Matches";
 
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans">

@@ -18,26 +18,6 @@ interface ProfileHeaderProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inline stat pill
-// ─────────────────────────────────────────────────────────────────────────────
-
-function StatPill({
-  icon, value, label,
-}: {
-  icon:  React.ReactNode;
-  value: string;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.05] border border-white/[0.09]">
-      <span className="text-primary flex-shrink-0">{icon}</span>
-      <span className="text-xs font-mono font-black text-white tabular-nums">{value}</span>
-      <span className="text-[10px] font-mono text-white/35 uppercase tracking-wide">{label}</span>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Monogram avatar — initials on brand gradient
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,45 +90,75 @@ export function ProfileHeader({ user, globalRank, accuracy, address }: ProfileHe
         {/* Ambient glow */}
         <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-primary opacity-[0.08] blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-start gap-5">
+        <div className="relative z-10 space-y-4">
 
-          {/* Monogram avatar */}
-          <MonogramAvatar initials={user.initials} rank={user.rank} />
+          <div className="flex flex-col sm:flex-row sm:items-start gap-5">
 
-          {/* Identity block */}
-          <div className="flex-1 min-w-0 space-y-3">
+            {/* Monogram avatar */}
+            <MonogramAvatar initials={user.initials} rank={user.rank} />
 
-            {/* Name */}
-            <div>
-              <h1 className="text-xl font-black text-white tracking-tight leading-tight">
-                {user.displayName}
-              </h1>
-              <p className="text-xs text-white/35 font-mono mt-0.5">@{user.username}</p>
+            {/* Identity block */}
+            <div className="flex-1 min-w-0 space-y-2">
+
+              {/* Name + rank */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h1 className="text-xl font-black text-white tracking-tight leading-tight">
+                    {user.displayName}
+                  </h1>
+                  <p className="text-xs text-white/35 font-mono mt-0.5">@{user.username}</p>
+                </div>
+                <RankBadge rank={user.rank as "bronze" | "silver" | "gold" | "platinum" | "diamond" | "legend"} size="sm" />
+              </div>
+
+              {/* Address + network badge */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Shield size={11} className="text-white/25 flex-shrink-0" />
+                <span className="text-[11px] font-mono text-white/35">{displayAddress}</span>
+                <span className={cn(
+                  "text-[9px] font-mono px-1.5 py-0.5 rounded-md leading-none",
+                  "bg-primary/12 border border-primary/20 text-primary/65",
+                )}>
+                  Base
+                </span>
+              </div>
+
             </div>
+          </div>
 
-            {/* Address + network badge */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <Shield size={11} className="text-white/25 flex-shrink-0" />
-              <span className="text-[11px] font-mono text-white/35">{displayAddress}</span>
-              <span className={cn(
-                "text-[9px] font-mono px-1.5 py-0.5 rounded-md leading-none",
-                "bg-primary/12 border border-primary/20 text-primary/65",
-              )}>
-                Base
-              </span>
-            </div>
-
-            {/* Stat pills */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatPill icon={<Zap    size={11} />} value={user.xp.toLocaleString()} label="XP"     />
-              <StatPill icon={<Flame  size={11} />} value={`${user.streak}`}          label="Streak" />
-              <StatPill icon={<Target size={11} />} value={`${accuracy}%`}            label="Acc"    />
+          {/* Stats separator + row */}
+          <div className="border-t border-white/[0.06] pt-3">
+            <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
+              <div className="flex items-center gap-1">
+                <Zap size={10} className="text-primary flex-shrink-0" />
+                <span className="text-xs font-mono font-black text-white tabular-nums leading-none">{user.xp.toLocaleString()}</span>
+                <span className="text-[10px] font-mono text-white/30 ml-0.5">XP</span>
+              </div>
+              <span className="text-white/15 text-[10px]">·</span>
+              <div className="flex items-center gap-1">
+                <Target size={10} className="text-primary/50 flex-shrink-0" />
+                <span className="text-xs font-mono text-white/55 tabular-nums leading-none">{accuracy}%</span>
+                <span className="text-[10px] font-mono text-white/25 ml-0.5">acc</span>
+              </div>
+              <span className="text-white/15 text-[10px]">·</span>
+              <div className="flex items-center gap-1">
+                <Flame size={10} className="text-primary/50 flex-shrink-0" />
+                <span className="text-xs font-mono text-white/55 tabular-nums leading-none">{user.streak}</span>
+                <span className="text-[10px] font-mono text-white/25 ml-0.5">streak</span>
+              </div>
               {globalRank > 0 && (
-                <StatPill icon={<Shield size={11} />} value={`#${globalRank}`} label="Rank" />
+                <>
+                  <span className="text-white/15 text-[10px]">·</span>
+                  <div className="flex items-center gap-1">
+                    <Shield size={10} className="text-primary/50 flex-shrink-0" />
+                    <span className="text-xs font-mono text-white/55 tabular-nums leading-none">#{globalRank}</span>
+                    <span className="text-[10px] font-mono text-white/25 ml-0.5">rank</span>
+                  </div>
+                </>
               )}
             </div>
-
           </div>
+
         </div>
       </div>
     </motion.div>
