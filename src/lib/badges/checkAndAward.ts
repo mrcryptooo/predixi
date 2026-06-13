@@ -430,12 +430,15 @@ async function incrementLeaderboardXP(
         const newWeekly = period === 'weekly'
           ? (existing.weekly_xp ?? 0) + xpDelta
           : (existing.weekly_xp ?? 0)
-        await supabase
+        const { error: lbUpdateErr } = await supabase
           .from('leaderboard_stats')
           .update({ xp: newXp, weekly_xp: newWeekly, computed_at: now })
           .eq('id', existing.id)
+        if (lbUpdateErr) {
+          console.error(`[incrementLeaderboardXP:badge] update (${period}):`, lbUpdateErr.message)
+        }
       } else {
-        await supabase
+        const { error: lbInsertErr } = await supabase
           .from('leaderboard_stats')
           .insert({
             profile_id:          profileId,
@@ -447,6 +450,9 @@ async function incrementLeaderboardXP(
             accuracy:            0,
             computed_at:         now,
           })
+        if (lbInsertErr) {
+          console.error(`[incrementLeaderboardXP:badge] insert (${period}):`, lbInsertErr.message)
+        }
       }
     } catch (e) {
       // Non-fatal — leaderboard stats are a derived view.  Missing an update

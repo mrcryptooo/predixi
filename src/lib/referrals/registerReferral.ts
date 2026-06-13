@@ -296,7 +296,7 @@ export async function registerReferral(
             .maybeSingle()
 
           if (lbRow) {
-            await supabase
+            const { error: lbUpdateErr } = await supabase
               .from('leaderboard_stats')
               .update({
                 xp:          (lbRow.xp       ?? 0) + DIRECT_REWARD_XP,
@@ -306,8 +306,11 @@ export async function registerReferral(
                 computed_at: lbNow,
               })
               .eq('id', lbRow.id)
+            if (lbUpdateErr) {
+              console.error(`[registerReferral] leaderboard_stats update (${period}):`, lbUpdateErr.message)
+            }
           } else {
-            await supabase
+            const { error: lbInsertErr } = await supabase
               .from('leaderboard_stats')
               .insert({
                 profile_id:  profileId,
@@ -316,6 +319,9 @@ export async function registerReferral(
                 weekly_xp:   period === 'weekly' ? DIRECT_REWARD_XP : 0,
                 computed_at: lbNow,
               })
+            if (lbInsertErr) {
+              console.error(`[registerReferral] leaderboard_stats insert (${period}):`, lbInsertErr.message)
+            }
           }
         }
       }

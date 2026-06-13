@@ -183,7 +183,7 @@ export async function awardReferralBonus(
             .maybeSingle()
 
           if (lbRow) {
-            await supabase
+            const { error: lbUpdateErr } = await supabase
               .from('leaderboard_stats')
               .update({
                 xp:          (lbRow.xp ?? 0) + bonusXp,
@@ -193,8 +193,11 @@ export async function awardReferralBonus(
                 computed_at: now,
               })
               .eq('id', lbRow.id)
+            if (lbUpdateErr) {
+              console.error(`[awardReferralBonus] leaderboard_stats update (${period}):`, lbUpdateErr.message)
+            }
           } else {
-            await supabase
+            const { error: lbInsertErr } = await supabase
               .from('leaderboard_stats')
               .insert({
                 profile_id:          profileId,
@@ -207,6 +210,9 @@ export async function awardReferralBonus(
                 position:            null,
                 computed_at:         now,
               })
+            if (lbInsertErr) {
+              console.error(`[awardReferralBonus] leaderboard_stats insert (${period}):`, lbInsertErr.message)
+            }
           }
         }
       }

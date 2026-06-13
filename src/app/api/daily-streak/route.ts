@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
             .maybeSingle()
 
           if (lbRow) {
-            await supabase
+            const { error: lbUpdateErr } = await supabase
               .from('leaderboard_stats')
               .update({
                 xp:          lbRow.xp + XP_REWARD,
@@ -250,8 +250,11 @@ export async function POST(req: NextRequest) {
                 computed_at: now,
               })
               .eq('id', lbRow.id)
+            if (lbUpdateErr) {
+              console.error(`[daily-streak] leaderboard_stats update (${period}):`, lbUpdateErr.message)
+            }
           } else {
-            await supabase
+            const { error: lbInsertErr } = await supabase
               .from('leaderboard_stats')
               .insert({
                 profile_id:  profileId,
@@ -260,6 +263,9 @@ export async function POST(req: NextRequest) {
                 weekly_xp:   period === 'weekly' ? XP_REWARD : 0,
                 computed_at: now,
               })
+            if (lbInsertErr) {
+              console.error(`[daily-streak] leaderboard_stats insert (${period}):`, lbInsertErr.message)
+            }
           }
         } catch (e) {
           console.warn('[daily-streak] leaderboard_stats update skipped:', e)

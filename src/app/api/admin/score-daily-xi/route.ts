@@ -49,12 +49,15 @@ async function incrementLeaderboardXP(
       const newWeekly  = period === 'weekly'
         ? (existing.weekly_xp ?? 0) + xpDelta
         : (existing.weekly_xp ?? 0)
-      await supabase
+      const { error: lbUpdateErr } = await supabase
         .from('leaderboard_stats')
         .update({ xp: newXp, weekly_xp: newWeekly, computed_at: new Date().toISOString() })
         .eq('id', existing.id)
+      if (lbUpdateErr) {
+        console.error(`[incrementLeaderboardXP:admin-xi] update (${period}):`, lbUpdateErr.message)
+      }
     } else {
-      await supabase
+      const { error: lbInsertErr } = await supabase
         .from('leaderboard_stats')
         .insert({
           profile_id:          profileId,
@@ -67,6 +70,9 @@ async function incrementLeaderboardXP(
           position:            null,
           computed_at:         new Date().toISOString(),
         })
+      if (lbInsertErr) {
+        console.error(`[incrementLeaderboardXP:admin-xi] insert (${period}):`, lbInsertErr.message)
+      }
     }
   }
 }

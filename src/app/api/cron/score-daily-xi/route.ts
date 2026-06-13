@@ -43,7 +43,7 @@ async function incrementLeaderboardXP(
       .maybeSingle()
 
     if (existing) {
-      await supabase
+      const { error: lbUpdateErr } = await supabase
         .from('leaderboard_stats')
         .update({
           xp:          (existing.xp      ?? 0) + xpDelta,
@@ -53,8 +53,11 @@ async function incrementLeaderboardXP(
           computed_at: new Date().toISOString(),
         })
         .eq('id', existing.id)
+      if (lbUpdateErr) {
+        console.error(`[incrementLeaderboardXP:cron-xi] update (${period}):`, lbUpdateErr.message)
+      }
     } else {
-      await supabase
+      const { error: lbInsertErr } = await supabase
         .from('leaderboard_stats')
         .insert({
           profile_id:          profileId,
@@ -67,6 +70,9 @@ async function incrementLeaderboardXP(
           position:            null,
           computed_at:         new Date().toISOString(),
         })
+      if (lbInsertErr) {
+        console.error(`[incrementLeaderboardXP:cron-xi] insert (${period}):`, lbInsertErr.message)
+      }
     }
   }
 }
