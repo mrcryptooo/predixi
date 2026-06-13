@@ -270,7 +270,9 @@ export type PlayerRow = {
   updated_at:         string
 }
 
-export type InsertPlayer = Omit<PlayerRow, 'id' | 'created_at' | 'updated_at'>
+export type InsertPlayer = Omit<PlayerRow, 'id' | 'created_at' | 'updated_at' | 'featured_daily_xi'> & {
+  featured_daily_xi?: boolean  // optional on insert — DB defaults to false
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Database schema shape (used as generic param for createClient<Database>)
