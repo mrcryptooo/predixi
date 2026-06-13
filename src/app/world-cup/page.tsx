@@ -429,7 +429,7 @@ export default function WorldCupPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/matches?source=fd&limit=200&includePast=true")
+    fetch("/api/matches?source=apf&limit=200&includePast=true")
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: (RealMatch & { leagueId?: string })[] } | null) => {
         if (!d) return;
