@@ -353,7 +353,7 @@ export function DailyHeroes({ isConnected }: { isConnected: boolean }) {
   // Step 0 — load real WC player pool from DB-backed /api/players (zero APF calls)
   // Falls back silently to static PLAYER_POOL if fetch fails or returns empty.
   useEffect(() => {
-    fetch("/api/players?leagueId=WC&season=2026&limit=1500")
+    fetch("/api/players?leagueId=WC&season=2026&featured=true&limit=700")
       .then(r => r.ok ? r.json() : null)
       .catch(() => null)
       .then((d: { ok: boolean; players: ApiPlayerForXI[] } | null) => {

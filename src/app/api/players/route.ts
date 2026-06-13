@@ -10,6 +10,7 @@
  *   position  string    Goalkeeper | Defender | Midfielder | Attacker
  *   teamId    string    'apf-team-{id}' format
  *   limit     number    default: 200, max: 1500
+ *   featured  boolean   if 'true', only returns players where featured_daily_xi = true
  *
  * Response (200):
  *   {
@@ -44,6 +45,7 @@ const VALID_POSITIONS = new Set(['Goalkeeper', 'Defender', 'Midfielder', 'Attack
 const DEFAULT_LIMIT   = 200
 const MAX_LIMIT       = 1500
 const DEFAULT_SEASON  = 2026
+const FEATURED_CACHE  = { 'Cache-Control': 'public, max-age=300, s-maxage=3600' }
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=60, s-maxage=300',
@@ -86,7 +88,8 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const teamId = sp.get('teamId') ?? undefined   // e.g. 'apf-team-6'
+  const teamId   = sp.get('teamId')   ?? undefined   // e.g. 'apf-team-6'
+  const featured = sp.get('featured') === 'true'     // only curated Daily XI stars
 
   const rawLimit = sp.get('limit')
   const limit    = rawLimit
@@ -111,6 +114,7 @@ export async function GET(req: NextRequest) {
 
     if (position) query = query.eq('position', position)
     if (teamId)   query = query.eq('team_id', teamId)
+    if (featured) query = query.eq('featured_daily_xi', true)
 
     const { data: rawRows, error } = await query
 
@@ -161,13 +165,16 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
-        ok: true,
+        ok:       true,
         leagueId,
         season,
-        count: players.length,
+        featured,
+        count:    players.length,
         players,
       },
-      { headers: CACHE_HEADERS },
+      // Featured pool is stable (only changes when curation script re-runs),
+      // so it can be cached much longer than the full squad list.
+      { headers: featured ? FEATURED_CACHE : CACHE_HEADERS },
     )
   } catch (e) {
     console.error('[GET /api/players] unhandled:', e)
