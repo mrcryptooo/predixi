@@ -257,10 +257,10 @@ export async function settlePrediction(
     const newTotal   = (profile.total_predictions    ?? 0) + 1
     const newRank    = computeRank(newXp)
 
+    // Update non-XP fields (rank, counts) — xp handled atomically below
     const { error: profileErr } = await supabase
       .from('profiles')
       .update({
-        xp:                  newXp,
         correct_predictions: newCorrect,
         total_predictions:   newTotal,
         rank:                newRank,
@@ -269,6 +269,15 @@ export async function settlePrediction(
 
     if (profileErr) {
       errors.push(`profile update: ${profileErr.message}`)
+    }
+
+    // Atomically increment profiles.xp — avoids read-then-write race
+    if (xpAwarded > 0) {
+      const { error: xpRpcErr } = await supabase
+        .rpc('increment_profile_xp', { p_id: pred.profile_id, p_delta: xpAwarded })
+      if (xpRpcErr) {
+        errors.push(`profile xp rpc: ${xpRpcErr.message}`)
+      }
     }
 
     // ── 3. xp_events ledger ──────────────────────────────────────────────────

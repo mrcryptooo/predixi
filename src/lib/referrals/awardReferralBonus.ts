@@ -147,22 +147,23 @@ export async function awardReferralBonus(
     }
 
     // ── 6 + 7. Increment referrer profiles.xp and leaderboard_stats ─────────
-    // Single profiles query — id is reused for leaderboard lookup below.
     let profileId: string | undefined
 
     try {
       const { data: refProf } = await supabase
         .from('profiles')
-        .select('id, xp')
+        .select('id')
         .eq('wallet_address', referrerWallet)
         .maybeSingle()
 
       if (refProf) {
         profileId = refProf.id as string
-        await supabase
-          .from('profiles')
-          .update({ xp: (refProf.xp ?? 0) + bonusXp })
-          .eq('id', refProf.id)
+        // Atomically increment profiles.xp — no read-then-write race
+        const { error: xpRpcErr } = await supabase
+          .rpc('increment_profile_xp', { p_id: refProf.id as string, p_delta: bonusXp })
+        if (xpRpcErr) {
+          console.warn('[awardReferralBonus] profiles.xp rpc error:', xpRpcErr.message)
+        }
       }
     } catch (e) {
       console.warn('[awardReferralBonus] profiles.xp update skipped:', e)

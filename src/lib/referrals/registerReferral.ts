@@ -256,18 +256,19 @@ export async function registerReferral(
       console.warn('[registerReferral] direct_rewarded_at update skipped:', e)
     }
 
-    // ── 8. Increment referrer profiles.xp ────────────────────────────────
+    // ── 8. Increment referrer profiles.xp (atomic) ───────────────────────
     try {
       const { data: rp } = await supabase
         .from('profiles')
-        .select('id, xp')
+        .select('id')
         .eq('wallet_address', referrerWallet)
         .maybeSingle()
       if (rp) {
-        await supabase
-          .from('profiles')
-          .update({ xp: (rp.xp ?? 0) + DIRECT_REWARD_XP })
-          .eq('id', rp.id)
+        const { error: xpRpcErr } = await supabase
+          .rpc('increment_profile_xp', { p_id: rp.id as string, p_delta: DIRECT_REWARD_XP })
+        if (xpRpcErr) {
+          console.warn('[registerReferral] profiles.xp rpc error:', xpRpcErr.message)
+        }
       }
     } catch (e) {
       console.warn('[registerReferral] profiles.xp update skipped:', e)

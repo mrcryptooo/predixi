@@ -266,18 +266,20 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // ── Increment profiles.xp and sync profiles.streak ───────────────────────
+      // ── Sync profiles.streak + atomically increment profiles.xp ─────────────
       try {
-        const { data: prof } = await supabase
+        // streak is a non-XP field — plain update is fine (no race on this field)
+        await supabase
           .from('profiles')
-          .select('id, xp')
+          .update({ streak: newStreak })
           .eq('wallet_address', normalizedWallet)
-          .maybeSingle()
-        if (prof) {
-          await supabase
-            .from('profiles')
-            .update({ xp: prof.xp + XP_REWARD, streak: newStreak })
-            .eq('id', prof.id)
+        // XP increment is atomic — no read-then-write race
+        if (profileId) {
+          const { error: xpRpcErr } = await supabase
+            .rpc('increment_profile_xp', { p_id: profileId, p_delta: XP_REWARD })
+          if (xpRpcErr) {
+            console.warn('[daily-streak] profiles.xp rpc error:', xpRpcErr.message)
+          }
         }
       } catch (e) {
         console.warn('[daily-streak] profiles update skipped:', e)

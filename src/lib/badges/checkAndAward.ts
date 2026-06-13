@@ -592,27 +592,13 @@ export async function checkAndAwardBadges(
       console.error(`[checkAndAwardBadges] xp_events insert (${badgeId}):`, xpEventErr)
     }
 
-    // ── Increment profiles.xp ─────────────────────────────────────────────────
-    // Fetch-then-update pattern (same as daily-streak and referral bonus).
-    // TODO (Phase C+): replace with atomic RPC to eliminate race window.
+    // ── Increment profiles.xp (atomic — no read-then-write race) ────────────
     if (badge.xpReward > 0) {
-      const { data: prof, error: profFetchErr } = await supabase
-        .from('profiles')
-        .select('xp')
-        .eq('id', profileId)
-        .single()
+      const { error: xpRpcErr } = await supabase
+        .rpc('increment_profile_xp', { p_id: profileId, p_delta: badge.xpReward })
 
-      if (profFetchErr) {
-        console.error(`[checkAndAwardBadges] profiles.xp fetch (${badgeId}):`, profFetchErr)
-      } else if (prof) {
-        const { error: profUpdateErr } = await supabase
-          .from('profiles')
-          .update({ xp: (prof.xp ?? 0) + badge.xpReward })
-          .eq('id', profileId)
-
-        if (profUpdateErr) {
-          console.error(`[checkAndAwardBadges] profiles.xp update (${badgeId}):`, profUpdateErr)
-        }
+      if (xpRpcErr) {
+        console.error(`[checkAndAwardBadges] profiles.xp rpc (${badgeId}):`, xpRpcErr.message)
       }
 
       // ── Update leaderboard_stats (all_time + weekly) ───────────────────────

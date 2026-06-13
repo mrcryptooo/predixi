@@ -179,6 +179,13 @@ export async function settleWCPrediction(
           .maybeSingle()
 
         if (profile?.id) {
+          // Atomically increment profiles.xp — was previously missing from this path
+          const { error: xpRpcErr } = await supabase
+            .rpc('increment_profile_xp', { p_id: profile.id as string, p_delta: xpAwarded })
+          if (xpRpcErr) {
+            console.warn('[settleWCPrediction] profiles.xp rpc error:', xpRpcErr.message)
+          }
+
           await incrementLeaderboardXP(supabase, profile.id as string, xpAwarded)
         }
 
