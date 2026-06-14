@@ -32,8 +32,9 @@ export async function GET(req: NextRequest) {
   const p           = req.nextUrl.searchParams
   const source      = p.get('source') ?? 'all'
   const status      = p.get('status')
-  const limit       = Math.min(parseInt(p.get('limit') ?? '20', 10) || 20, 100)
   const includePast = p.get('includePast') === 'true'
+  const limitParam  = parseInt(p.get('limit') ?? '20', 10) || 20
+  const limit       = Math.min(limitParam, includePast ? 500 : 100)
 
   const supabase = getServerSupabaseClient()
 

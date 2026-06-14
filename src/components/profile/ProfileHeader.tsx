@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RankBadge } from "@/components/ui/Badge";
 import type { User } from "@/types";
@@ -10,10 +11,11 @@ import type { User } from "@/types";
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ProfileHeaderProps {
-  user:       User;
-  globalRank: number;
-  accuracy:   number;
-  address?:   string;
+  user:        User;
+  globalRank:  number;
+  accuracy:    number;
+  address?:    string;
+  onEditName?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +68,11 @@ function MonogramAvatar({ initials, rank }: { initials: string; rank: string }) 
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ProfileHeader({ user }: ProfileHeaderProps) {
+export function ProfileHeader({ user, address, onEditName }: ProfileHeaderProps) {
+  const shortAddr = address
+    ? `${address.slice(0, 6)}…${address.slice(-4)}`
+    : null
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -85,8 +91,36 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
         {/* Ambient glow */}
         <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-primary opacity-[0.08] blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex">
+        <div className="relative z-10 flex items-center gap-5">
           <MonogramAvatar initials={user.initials} rank={user.rank} />
+
+          {/* Identity */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xl font-black text-white leading-tight truncate">
+                {user.displayName}
+              </span>
+              {onEditName && (
+                <button
+                  type="button"
+                  onClick={onEditName}
+                  aria-label="Edit display name"
+                  className={cn(
+                    "flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center",
+                    "border border-white/10 bg-white/[0.04]",
+                    "hover:bg-primary/15 hover:border-primary/30 transition-colors",
+                  )}
+                >
+                  <Pencil size={12} className="text-white/40" />
+                </button>
+              )}
+            </div>
+            {shortAddr && (
+              <p className="text-xs font-mono text-white/25 mt-1 truncate">
+                {shortAddr}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </motion.div>

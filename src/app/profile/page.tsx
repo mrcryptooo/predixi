@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage } from "wagmi";
 import {
-  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet,
+  Zap, Shield, Link2, FileText, ChevronDown, ChevronUp, Wallet, X,
 } from "lucide-react";
+import { generateNonce, buildPredixiAuthMessage } from "@/lib/auth/wallet-signature";
 import { badges } from "@/data/badges";
 import { getMatchById } from "@/data/matches";
 import { leagueMap } from "@/data/leagues";
@@ -53,14 +54,16 @@ type BadgeMintInfo = {
 };
 
 type ApiProfile = {
-  walletAddress: string;
-  xp: number;
-  rank: string;
-  streak: number;
-  totalPredictions: number;
+  walletAddress:      string;
+  displayName:        string | null;
+  username:           string | null;
+  xp:                 number;
+  rank:               string;
+  streak:             number;
+  totalPredictions:   number;
   correctPredictions: number;
-  accuracy: number;
-  createdAt: string | null;
+  accuracy:           number;
+  createdAt:          string | null;
 };
 
 type ApiPrediction = {
@@ -110,6 +113,12 @@ function toHistoryEntry(p: ApiPrediction, metaMap: Record<string, MatchMeta>): P
 
 function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -365,10 +374,17 @@ const futureItems = [
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
+  const { signMessageAsync }     = useSignMessage();
 
   const [profile,     setProfile]     = useState<ApiProfile | null>(null);
   const [predictions, setPredictions] = useState<ApiPrediction[]>([]);
   const [matchMeta,   setMatchMeta]   = useState<Record<string, MatchMeta>>({});
+
+  // Edit display name modal state
+  const [editNameOpen,   setEditNameOpen]   = useState(false);
+  const [editNameValue,  setEditNameValue]  = useState('');
+  const [editNameError,  setEditNameError]  = useState<string | null>(null);
+  const [editNameSaving, setEditNameSaving] = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
 
@@ -431,8 +447,8 @@ export default function ProfilePage() {
       })
       .catch(() => {})
       .finally(finish);
-    // Build match metadata map for fd-* IDs
-    fetch(`/api/matches?source=all&limit=100`)
+    // Build match metadata map — include past matches so history shows correct team names
+    fetch(`/api/matches?source=all&limit=500&includePast=true`)
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: { id: string; homeTeam: { shortName: string; crest?: string | null }; awayTeam: { shortName: string; crest?: string | null }; leagueId: string }[] } | null) => {
         if (!d) return;
@@ -447,12 +463,13 @@ export default function ProfilePage() {
   }, [address]);
 
   // Synthetic User for child components
+  const dn = profile?.displayName ?? null;
   const syntheticUser: User | null = isConnected && address ? {
     id:                 address,
-    username:           truncateAddress(address),
-    displayName:        truncateAddress(address),
+    username:           dn ?? truncateAddress(address),
+    displayName:        dn ?? truncateAddress(address),
     avatar:             "⚡",
-    initials:           address.slice(2, 4).toUpperCase(),
+    initials:           dn ? getInitials(dn) : address.slice(2, 4).toUpperCase(),
     xp:                 profile?.xp ?? 0,
     rank:               (profile?.rank as UserRank) ?? "bronze",
     streak:             profile?.streak ?? 0,
@@ -463,6 +480,59 @@ export default function ProfilePage() {
     countryFlag:        "🌐",
     badgeIds:           [],
   } : null;
+
+  // Edit display name — opens modal pre-filled with current name
+  const handleOpenEditName = useCallback(() => {
+    setEditNameValue(profile?.displayName ?? '');
+    setEditNameError(null);
+    setEditNameOpen(true);
+  }, [profile?.displayName]);
+
+  // Save display name — sign → PATCH /api/profiles → update local state
+  const handleSaveName = useCallback(async () => {
+    if (!address || editNameSaving) return;
+    const trimmed = editNameValue.trim();
+    if (trimmed.length < 2 || trimmed.length > 25) {
+      setEditNameError('Display name must be 2–25 characters');
+      return;
+    }
+    setEditNameSaving(true);
+    setEditNameError(null);
+    try {
+      const nonce   = generateNonce();
+      const message = buildPredixiAuthMessage(address, 'update-display-name', nonce);
+      const sig     = await signMessageAsync({ message });
+
+      const res  = await fetch('/api/profiles', {
+        method:  'PATCH',
+        headers: {
+          'Content-Type':       'application/json',
+          'x-wallet-message':   encodeURIComponent(message),
+          'x-wallet-signature': sig,
+        },
+        body: JSON.stringify({ walletAddress: address, displayName: trimmed }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setEditNameError(data.error ?? 'Failed to update name');
+        return;
+      }
+
+      // Optimistic update — reflect immediately without a full reload
+      setProfile(prev => prev ? { ...prev, displayName: trimmed } : prev);
+      setEditNameOpen(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.toLowerCase().includes('rejected') || msg.toLowerCase().includes('denied')) {
+        setEditNameError('Signature was rejected');
+      } else {
+        setEditNameError('Failed to update name — please try again');
+      }
+    } finally {
+      setEditNameSaving(false);
+    }
+  }, [address, editNameValue, editNameSaving, signMessageAsync]);
 
   // Badge mint callback — updates local state immediately after PATCH succeeds.
   // Switches the card from "Ready to Mint" → "Owned on Base" without a full reload.
@@ -521,6 +591,7 @@ export default function ProfilePage() {
               globalRank={0}
               accuracy={accuracy}
               address={address}
+              onEditName={handleOpenEditName}
             />
 
             {/* ── Stats ─────────────────────────────────────────────────── */}
@@ -760,6 +831,106 @@ export default function ProfilePage() {
         </footer>
 
       </div>
+
+      {/* ── Edit Display Name Modal ──────────────────────────────────────── */}
+      {editNameOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(4,7,22,0.80)', backdropFilter: 'blur(6px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditNameOpen(false); }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className={cn(
+              "w-full max-w-sm rounded-3xl",
+              "border border-primary/25",
+              "bg-gradient-to-b from-[#0c1030] to-[#060810]",
+              "shadow-[0_0_48px_rgba(22,82,240,0.18)]",
+              "p-6 space-y-5",
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-black text-white leading-tight">
+                  Display Name
+                </h2>
+                <p className="text-xs text-white/35 font-mono mt-0.5">
+                  Shown on profile and leaderboard
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditNameOpen(false)}
+                className="w-7 h-7 rounded-lg border border-white/10 flex items-center justify-center hover:bg-white/[0.06] transition-colors flex-shrink-0"
+              >
+                <X size={13} className="text-white/40" />
+              </button>
+            </div>
+
+            {/* Input */}
+            <div>
+              <input
+                type="text"
+                value={editNameValue}
+                onChange={e => setEditNameValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }}
+                maxLength={25}
+                autoFocus
+                placeholder="Enter a display name…"
+                className={cn(
+                  "w-full px-4 py-3 rounded-xl text-sm font-semibold text-white",
+                  "bg-white/[0.05] border",
+                  editNameError ? "border-danger/40" : "border-white/[0.10] focus:border-primary/40",
+                  "focus:outline-none placeholder:text-white/20 transition-colors",
+                )}
+                disabled={editNameSaving}
+              />
+              <div className="flex items-center justify-between mt-1.5 px-0.5">
+                {editNameError ? (
+                  <p className="text-xs text-danger/80 font-mono">{editNameError}</p>
+                ) : (
+                  <p className="text-xs text-white/20 font-mono">2–25 characters</p>
+                )}
+                <p className={cn(
+                  "text-xs font-mono",
+                  editNameValue.trim().length > 22 ? "text-warning/70" : "text-white/20",
+                )}>
+                  {editNameValue.trim().length}/25
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setEditNameOpen(false); setEditNameError(null); }}
+                disabled={editNameSaving}
+                className="flex-1 h-10 rounded-xl text-sm font-semibold border border-white/10 text-white/40 hover:text-white/60 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveName}
+                disabled={editNameSaving || editNameValue.trim().length < 2}
+                className={cn(
+                  "flex-1 h-10 rounded-xl text-sm font-bold transition-all",
+                  "bg-primary/20 text-white border border-primary/35",
+                  "hover:bg-primary/30",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                )}
+              >
+                {editNameSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </main>
   );
 }

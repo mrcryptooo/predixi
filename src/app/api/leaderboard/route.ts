@@ -16,6 +16,12 @@ function truncAddr(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  return name.slice(0, 2).toUpperCase()
+}
+
 function err(msg: string, status = 500) {
   return NextResponse.json({ success: false, error: msg }, { status })
 }
@@ -46,7 +52,7 @@ export async function GET(req: NextRequest) {
       const profileIds = statsRows.map(r => r.profile_id as string)
       const { data: profileRows } = await supabase
         .from('profiles')
-        .select('id, wallet_address, rank, streak')
+        .select('id, wallet_address, rank, streak, display_name')
         .in('id', profileIds)
 
       const profileMap = new Map(
@@ -64,13 +70,14 @@ export async function GET(req: NextRequest) {
             ? Math.round(r.accuracy as number)
             : total > 0 ? Math.round((correct / total) * 100) : 0
 
+          const dn = prof.display_name as string | null
           return {
             position:           i + 1,
             userId:             addr,
-            username:           truncAddr(addr),
-            displayName:        truncAddr(addr),
+            username:           dn ?? truncAddr(addr),
+            displayName:        dn ?? truncAddr(addr),
             avatar:             '⚡',
-            initials:           addr.slice(2, 4).toUpperCase(),
+            initials:           dn ? getInitials(dn) : addr.slice(2, 4).toUpperCase(),
             countryFlag:        '🌐',
             xp:                 (r.xp as number)        ?? 0,
             rank:               ((prof.rank as string)  ?? 'bronze') as LeaderboardEntry['rank'],
@@ -104,7 +111,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('wallet_address, xp, rank, streak, total_predictions, correct_predictions')
+      .select('wallet_address, xp, rank, streak, total_predictions, correct_predictions, display_name')
       .gt('xp', 0)
       .order('xp',                  { ascending: false })
       .order('correct_predictions', { ascending: false })
@@ -120,13 +127,14 @@ export async function GET(req: NextRequest) {
       const addr    = row.wallet_address as string
       const total   = (row.total_predictions   as number) ?? 0
       const correct = (row.correct_predictions as number) ?? 0
+      const dn      = row.display_name as string | null
       return {
         position:           i + 1,
         userId:             addr,
-        username:           truncAddr(addr),
-        displayName:        truncAddr(addr),
+        username:           dn ?? truncAddr(addr),
+        displayName:        dn ?? truncAddr(addr),
         avatar:             '⚡',
-        initials:           addr.slice(2, 4).toUpperCase(),
+        initials:           dn ? getInitials(dn) : addr.slice(2, 4).toUpperCase(),
         countryFlag:        '🌐',
         xp:                 (row.xp     as number) ?? 0,
         rank:               ((row.rank  as string) ?? 'bronze') as LeaderboardEntry['rank'],
