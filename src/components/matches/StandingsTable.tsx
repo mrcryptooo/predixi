@@ -16,15 +16,27 @@ const COMPETITIONS = [
 type StandingRow = {
   position:     number;
   teamName:     string;
-  teamLogo?:    string | null;   // APF team crest CDN URL
+  teamLogo?:    string | null;
   played:       number;
   won:          number;
   drawn:        number;
   lost:         number;
+  goalsFor:     number;
+  goalsAgainst: number;
   goalDiff:     number;
   points:       number;
   form?:        string | null;
+  description?: string | null;
 };
+
+function zoneColor(desc: string | null | undefined): 'blue' | 'amber' | 'red' | null {
+  if (!desc) return null;
+  const d = desc.toLowerCase();
+  if (d.includes('relegation') || d.includes('playoff - relegation')) return 'red';
+  if (d.includes('europa') || d.includes('conference'))                return 'amber';
+  if (d.includes('champion'))                                          return 'blue';
+  return null;
+}
 
 export function StandingsTable() {
   const [comp,     setComp]     = useState("PL");
@@ -88,55 +100,58 @@ export function StandingsTable() {
               <tr className="border-b border-white/[0.06]">
                 <th className="text-left px-3 py-2.5 text-[10px] font-mono text-white/25 w-8">#</th>
                 <th className="text-left px-2 py-2.5 text-[10px] font-mono text-white/25">Team</th>
-                <th className="text-center px-2 py-2.5 text-[10px] font-mono text-white/25">P</th>
-                <th className="text-center px-2 py-2.5 text-[10px] font-mono text-white/25">W</th>
-                <th className="text-center px-2 py-2.5 text-[10px] font-mono text-white/25">D</th>
-                <th className="text-center px-2 py-2.5 text-[10px] font-mono text-white/25">L</th>
-                <th className="text-center px-2 py-2.5 text-[10px] font-mono text-white/25">GD</th>
-                <th className="text-center px-3 py-2.5 text-[10px] font-mono text-white/25">Pts</th>
+                <th className="text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">P</th>
+                <th className="text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">W</th>
+                <th className="text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">D</th>
+                <th className="text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">L</th>
+                <th className="hidden sm:table-cell text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">GF</th>
+                <th className="hidden sm:table-cell text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">GA</th>
+                <th className="text-center px-1.5 py-2.5 text-[10px] font-mono text-white/25">GD</th>
+                <th className="text-center px-3 py-2.5 text-[10px] font-mono text-white/30 font-bold">Pts</th>
               </tr>
             </thead>
             <tbody>
-              {table.map((row, i) => {
-                const isTop4    = row.position <= 4;
-                const isRelegation = row.position >= table.length - 2;
+              {table.map((row) => {
+                const zone = zoneColor(row.description);
                 return (
                   <tr
                     key={row.position}
-                    className={cn(
-                      "border-b border-white/[0.04] transition-colors",
-                      i % 2 === 0 ? "bg-white/[0.01]" : "",
-                      "hover:bg-white/[0.03]"
-                    )}
+                    className="border-b border-white/[0.04] transition-colors hover:bg-white/[0.03]"
                   >
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
                         <span className={cn(
                           "w-1 h-4 rounded-full flex-shrink-0",
-                          isTop4 ? "bg-primary/70" : isRelegation ? "bg-danger/50" : "bg-transparent"
+                          zone === 'blue'  ? "bg-primary/70" :
+                          zone === 'amber' ? "bg-amber-400/55" :
+                          zone === 'red'   ? "bg-danger/50" :
+                          "bg-transparent"
                         )} />
                         <span className={cn(
                           "font-mono font-bold tabular-nums",
-                          isTop4 ? "text-primary" : "text-white/40"
+                          zone === 'blue'  ? "text-primary" :
+                          zone === 'amber' ? "text-amber-400/80" :
+                          zone === 'red'   ? "text-danger/70" :
+                          "text-white/40"
                         )}>
                           {row.position}
                         </span>
                       </div>
                     </td>
-                    <td className="px-2 py-2 max-w-[140px]">
+                    <td className="px-2 py-2 max-w-[130px]">
                       <div className="flex items-center gap-2 min-w-0">
                         <TeamLogo src={row.teamLogo} name={row.teamName.slice(0, 3).toUpperCase()} size="sm" />
-                        <span className="font-semibold text-white/80 truncate">
-                          {row.teamName}
-                        </span>
+                        <span className="font-semibold text-white/80 truncate">{row.teamName}</span>
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.played}</td>
-                    <td className="px-2 py-2 text-center font-mono text-white/60 tabular-nums">{row.won}</td>
-                    <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.drawn}</td>
-                    <td className="px-2 py-2 text-center font-mono text-white/40 tabular-nums">{row.lost}</td>
+                    <td className="px-1.5 py-2 text-center font-mono text-white/40 tabular-nums">{row.played}</td>
+                    <td className="px-1.5 py-2 text-center font-mono text-white/60 tabular-nums">{row.won}</td>
+                    <td className="px-1.5 py-2 text-center font-mono text-white/40 tabular-nums">{row.drawn}</td>
+                    <td className="px-1.5 py-2 text-center font-mono text-white/40 tabular-nums">{row.lost}</td>
+                    <td className="hidden sm:table-cell px-1.5 py-2 text-center font-mono text-white/35 tabular-nums">{row.goalsFor}</td>
+                    <td className="hidden sm:table-cell px-1.5 py-2 text-center font-mono text-white/35 tabular-nums">{row.goalsAgainst}</td>
                     <td className={cn(
-                      "px-2 py-2 text-center font-mono tabular-nums",
+                      "px-1.5 py-2 text-center font-mono tabular-nums",
                       row.goalDiff > 0 ? "text-emerald-400/70" : row.goalDiff < 0 ? "text-danger/60" : "text-white/30"
                     )}>
                       {row.goalDiff > 0 ? `+${row.goalDiff}` : row.goalDiff}
@@ -151,7 +166,7 @@ export function StandingsTable() {
       </div>
 
       <p className="text-[10px] text-white/15 font-mono px-0.5">
-        Top 4 highlighted · Bottom 3 marked · Via API-Football
+        Zones from league data · GF/GA visible on wider screens · Via API-Football
       </p>
     </div>
   );

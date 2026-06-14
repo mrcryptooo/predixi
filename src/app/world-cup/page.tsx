@@ -259,15 +259,16 @@ type RealMatch = {
 };
 
 type WcStanding = {
-  teamName: string;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
-  goalsFor: number;
+  teamName:     string;
+  position:     number;
+  played:       number;
+  won:          number;
+  drawn:        number;
+  lost:         number;
+  goalsFor:     number;
   goalsAgainst: number;
-  goalDiff: number;
-  points: number;
+  goalDiff:     number;
+  points:       number;
 };
 
 // DB team_name → static worldCupGroups team.name aliases
@@ -372,6 +373,25 @@ function resolveCrest(name: string, code: string, map: Record<string, string>): 
   if (map[code]) return map[code];
   for (const a of (CREST_ALIASES[name] ?? [])) { if (map[a]) return map[a]; }
   return MANUAL_CREST[name] ?? MANUAL_CREST[code] ?? null;
+}
+
+// Sort group teams by live standings (pts → GD → GF).
+// Falls back to static order when no matches have been played.
+function sortGroupTeams(
+  teams: { name: string; shortCode: string; flag: string }[],
+  map: Record<string, WcStanding>,
+): { name: string; shortCode: string; flag: string }[] {
+  const hasLiveData = teams.some(t => (map[t.name]?.played ?? 0) > 0);
+  if (!hasLiveData) return teams;
+  return [...teams].sort((a, b) => {
+    const sa = map[a.name], sb = map[b.name];
+    if (!sa && !sb) return 0;
+    if (!sa) return 1;
+    if (!sb) return -1;
+    if (sb.points !== sa.points) return sb.points - sa.points;
+    if (sb.goalDiff !== sa.goalDiff) return sb.goalDiff - sa.goalDiff;
+    return sb.goalsFor - sa.goalsFor;
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -586,54 +606,105 @@ export default function WorldCupPage() {
 
         {/* ── Official Groups ───────────────────────────────────────────────── */}
         <section>
-          <SectionHeader title="Official Groups" sub="Live standings · P W D L GF GA GD Pts" />
+          <SectionHeader title="Official Groups" sub="FIFA World Cup 2026 · Top 2 from each group advance" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {worldCupGroups.map((group, gi) => (
-              <motion.div key={group.name}
-                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.22, ease: "easeOut", delay: gi * 0.03 }}
-                className="rounded-xl border px-3 py-3 bg-white/[0.03] border-white/[0.07]"
-              >
-                <p className="text-[10px] font-black text-primary/70 uppercase tracking-widest font-mono mb-2">
-                  {group.name}
-                </p>
-                {/* Header row */}
-                <div className="flex items-center gap-1 px-1 mb-1">
-                  <div className="flex-1 min-w-0" />
-                  {["P","W","D","L","GF","GA","GD","Pts"].map(h => (
-                    <span key={h} className="w-5 text-center text-[8px] font-mono text-white/25 flex-shrink-0">{h}</span>
-                  ))}
-                </div>
-                <div className="space-y-1">
-                  {group.teams.map(team => {
+            {worldCupGroups.map((group, gi) => {
+              const sorted = sortGroupTeams(group.teams, standingsMap);
+              return (
+                <motion.div key={group.name}
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, ease: "easeOut", delay: gi * 0.03 }}
+                  className="rounded-xl border overflow-hidden bg-white/[0.03] border-white/[0.08]"
+                >
+                  {/* Group header */}
+                  <div className="flex items-center justify-between px-3 py-2 bg-white/[0.025] border-b border-white/[0.07]">
+                    <p className="text-[11px] font-black text-white/90 uppercase tracking-widest font-mono">{group.name}</p>
+                    <span className="text-[9px] text-primary/50 font-mono tracking-wide">Top 2 advance</span>
+                  </div>
+                  {/* Column headers */}
+                  <div className="flex items-center px-2 py-[5px] border-b border-white/[0.04]">
+                    <div className="w-7 flex-shrink-0" />
+                    <div className="flex-1 min-w-0" />
+                    {["P","W","D","L","GF","GA","GD","PTS"].map((h, ci) => (
+                      <span key={h} className={cn(
+                        "text-center font-mono flex-shrink-0",
+                        ci === 7 ? "w-6 text-[8px] font-bold text-white/30" : "w-5 text-[8px] text-white/20",
+                      )}>{h}</span>
+                    ))}
+                  </div>
+                  {/* Team rows */}
+                  {sorted.map((team, pos) => {
                     const s = standingsMap[team.name];
+                    const isAdvancing = pos < 2;
+                    const flagUrl = FLAG_SRC[team.name];
                     return (
-                      <div key={team.shortCode} className="flex items-center gap-1 px-1">
-                        <div className="flex items-center gap-1 flex-1 min-w-0">
-                          <span className="text-[11px] leading-none flex-shrink-0">{team.flag}</span>
-                          <span className="text-[10px] font-semibold text-white/70 truncate leading-tight">{team.name}</span>
+                      <div key={team.shortCode}
+                        className={cn(
+                          "flex items-center px-2 py-1.5 border-b border-white/[0.04] last:border-0",
+                          isAdvancing && "bg-primary/[0.04]",
+                        )}
+                      >
+                        {/* Qualification bar + position */}
+                        <div className="w-7 flex-shrink-0 flex items-center gap-1">
+                          <span className={cn(
+                            "w-0.5 h-4 rounded-full flex-shrink-0",
+                            isAdvancing ? "bg-primary/55" : "bg-white/[0.07]",
+                          )} />
+                          <span className={cn(
+                            "text-[10px] font-bold font-mono tabular-nums",
+                            isAdvancing ? "text-primary/75" : "text-white/20",
+                          )}>{pos + 1}</span>
                         </div>
+                        {/* SVG flag + 3-letter code */}
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0 pr-1">
+                          {flagUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={flagUrl} alt="" aria-hidden="true"
+                              className="w-[18px] h-[13px] rounded-[2px] object-cover flex-shrink-0"
+                              style={{ opacity: isAdvancing ? 1 : 0.6 }}
+                            />
+                          ) : (
+                            <span className="text-[11px] leading-none flex-shrink-0"
+                              style={{ opacity: isAdvancing ? 1 : 0.6 }}>{team.flag}</span>
+                          )}
+                          <span className={cn(
+                            "text-[10px] font-semibold font-mono tracking-wide leading-tight",
+                            isAdvancing ? "text-white/85" : "text-white/45",
+                          )}>{team.shortCode}</span>
+                        </div>
+                        {/* Stats */}
                         {s ? (
                           <>
-                            {[s.played, s.won, s.drawn, s.lost, s.goalsFor, s.goalsAgainst, s.goalDiff].map((v, i) => (
-                              <span key={i} className="w-5 text-center text-[10px] font-mono text-white/45 flex-shrink-0 tabular-nums">{v}</span>
+                            {[s.played, s.won, s.drawn, s.lost, s.goalsFor, s.goalsAgainst].map((v, ci) => (
+                              <span key={ci} className="w-5 text-center text-[10px] font-mono text-white/40 flex-shrink-0 tabular-nums">{v}</span>
                             ))}
-                            <span className="w-5 text-center text-[10px] font-black font-mono text-white flex-shrink-0 tabular-nums">{s.points}</span>
+                            <span className={cn(
+                              "w-5 text-center text-[10px] font-mono flex-shrink-0 tabular-nums",
+                              s.goalDiff > 0 ? "text-emerald-400/70" :
+                              s.goalDiff < 0 ? "text-red-400/60" :
+                              "text-white/25",
+                            )}>
+                              {s.goalDiff > 0 ? `+${s.goalDiff}` : s.goalDiff}
+                            </span>
+                            <span className={cn(
+                              "w-6 text-center text-[11px] font-black font-mono flex-shrink-0 tabular-nums",
+                              isAdvancing ? "text-white" : "text-white/55",
+                            )}>{s.points}</span>
                           </>
                         ) : (
                           <>
-                            {Array.from({length: 7}, (_, i) => (
-                              <span key={i} className="w-5 text-center text-[10px] font-mono text-white/20 flex-shrink-0">0</span>
+                            {Array.from({ length: 7 }, (_, ci) => (
+                              <span key={ci} className="w-5 text-center text-[10px] font-mono text-white/[0.12] flex-shrink-0 tabular-nums">0</span>
                             ))}
-                            <span className="w-5 text-center text-[10px] font-black font-mono text-white/20 flex-shrink-0">0</span>
+                            <span className="w-6 text-center text-[10px] font-black font-mono text-white/[0.12] flex-shrink-0 tabular-nums">0</span>
                           </>
                         )}
                       </div>
                     );
                   })}
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         </section>
 
