@@ -36,7 +36,7 @@ function apiToMatch(m: Record<string, unknown>): Match {
     awayScore: m.awayScore as number | null,
     matchday:  (m.matchday as number) ?? 0,
     venue:     (m.venue as string) ?? "",
-    community: null,
+    community: (m.community as { home: number; draw: number; away: number } | null) ?? null,
   };
 }
 

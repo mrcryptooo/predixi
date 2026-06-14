@@ -13,6 +13,9 @@
  *   to the latest 20 matches regardless of date so the page is never empty.
  *
  * Sort order: live first (status=live), then kickoff ASC within each group.
+ *
+ * Community percentages: computed live from the predictions table using a
+ * single GROUP BY query (not N+1). Always fresh — no stale stored values.
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
@@ -26,6 +29,24 @@ function err(msg: string, status: number) {
 /** Returns today's date as YYYY-MM-DD in UTC. */
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/**
+ * Compute community prediction percentages from raw counts.
+ * Returns null if no predictions exist.
+ * The away percentage absorbs rounding so home+draw+away always equals 100.
+ */
+function toPct(
+  H: number,
+  D: number,
+  A: number,
+): { home: number; draw: number; away: number } | null {
+  const total = H + D + A
+  if (total === 0) return null
+  const home = Math.round((H / total) * 100)
+  const draw = Math.round((D / total) * 100)
+  const away = 100 - home - draw   // absorbs rounding to guarantee sum = 100
+  return { home, draw, away }
 }
 
 export async function GET(req: NextRequest) {
@@ -88,6 +109,33 @@ export async function GET(req: NextRequest) {
     return (a.kickoff as string) < (b.kickoff as string) ? -1 : 1
   })
 
+  // ── Community percentages: one GROUP BY across all returned matches ─────────
+  // Single query — no N+1 per match. Safe at any scale within the limit.
+  const matchIds = rows.map(r => r.id as string)
+
+  const communityMap: Record<string, { home: number; draw: number; away: number } | null> = {}
+
+  if (matchIds.length > 0) {
+    const { data: predRows } = await supabase
+      .from('predictions')
+      .select('match_id, outcome')
+      .in('match_id', matchIds)
+
+    // Tally counts per match
+    const counts: Record<string, { H: number; D: number; A: number }> = {}
+    for (const p of (predRows ?? [])) {
+      const mid = p.match_id as string
+      if (!counts[mid]) counts[mid] = { H: 0, D: 0, A: 0 }
+      const o = p.outcome as 'H' | 'D' | 'A'
+      if (o === 'H' || o === 'D' || o === 'A') counts[mid][o]++
+    }
+
+    for (const mid of matchIds) {
+      const c = counts[mid]
+      communityMap[mid] = c ? toPct(c.H, c.D, c.A) : null
+    }
+  }
+
   const matches = rows.map(m => ({
     id:            m.id,
     leagueId:      m.league_id,
@@ -100,6 +148,7 @@ export async function GET(req: NextRequest) {
     actualOutcome: m.actual_outcome,
     matchday:      m.matchday,
     venue:         m.venue,
+    community:     communityMap[m.id as string] ?? null,
   }))
 
   return NextResponse.json({

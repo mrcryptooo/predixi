@@ -41,6 +41,14 @@ function err(msg: string, status: number) {
   return NextResponse.json({ ok: false, error: msg }, { status })
 }
 
+function toPct(H: number, D: number, A: number) {
+  const total = H + D + A
+  if (total === 0) return null
+  const home = Math.round((H / total) * 100)
+  const draw = Math.round((D / total) * 100)
+  return { home, draw, away: 100 - home - draw }
+}
+
 function toResult(actual: string | null, isHome: boolean): 'W' | 'D' | 'L' | null {
   if (!actual) return null
   if (actual === 'D') return 'D'
@@ -74,8 +82,8 @@ export async function GET(
   const away   = m.away_team_name as string
   const league = m.league_id     as string
 
-  // ── 2. Form + H2H (6 parallel queries) ──────────────────────────────────
-  const [h1, h2, a1, a2, hh1, hh2] = await Promise.all([
+  // ── 2. Form + H2H + community percentages (7 parallel queries) ─────────
+  const [h1, h2, a1, a2, hh1, hh2, communityRows] = await Promise.all([
     // Home team's recent matches — as home
     supabase.from('matches').select(FORM_SELECT)
       .eq('status', 'finished').eq('league_id', league).eq('home_team_name', home)
@@ -100,6 +108,8 @@ export async function GET(
     supabase.from('matches').select(FORM_SELECT)
       .eq('status', 'finished').eq('home_team_name', away).eq('away_team_name', home)
       .neq('id', id).order('kickoff', { ascending: false }).limit(10),
+    // Community percentages — live from predictions
+    supabase.from('predictions').select('outcome').eq('match_id', id),
   ])
 
   // ── Build form results ───────────────────────────────────────────────────
@@ -160,6 +170,14 @@ export async function GET(
     }
   })
 
+  // ── Compute live community percentages ──────────────────────────────────
+  const predCounts = { H: 0, D: 0, A: 0 }
+  for (const p of (communityRows.data ?? [])) {
+    const o = p.outcome as 'H' | 'D' | 'A'
+    if (o === 'H' || o === 'D' || o === 'A') predCounts[o]++
+  }
+  const community = toPct(predCounts.H, predCounts.D, predCounts.A)
+
   // ── Response ─────────────────────────────────────────────────────────────
   return NextResponse.json(
     {
@@ -188,9 +206,7 @@ export async function GET(
         venue:         m.venue,
         leagueLogo:    m.league_logo   ?? null,
         countryFlag:   m.country_flag  ?? null,
-        community:     m.community_home != null
-          ? { home: m.community_home, draw: m.community_draw, away: m.community_away }
-          : null,
+        community,
       },
       form: {
         home: {
