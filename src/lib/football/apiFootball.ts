@@ -549,6 +549,73 @@ export function fetchApfLeagues(params?: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Odds payload + wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single bet value (e.g. Home:2.05) inside a bookmaker's bet market */
+export type ApfOddsValue = {
+  value: string   // 'Home' | 'Draw' | 'Away'
+  odd:   string   // decimal odds as a string, e.g. "2.05"
+}
+
+/** One bet market (e.g. 'Match Winner') inside a bookmaker entry */
+export type ApfOddsBet = {
+  id:     number
+  name:   string         // 'Match Winner' is the one we need (id=1)
+  values: ApfOddsValue[]
+}
+
+/** One bookmaker entry in the odds response */
+export type ApfOddsBookmaker = {
+  id:   number   // 8=Bet365, 1=10Bet, 7=William Hill
+  name: string
+  bets: ApfOddsBet[]
+}
+
+/** Full odds payload for one fixture (returned by /odds) */
+export type ApfOddsPayload = {
+  league: {
+    id:     number
+    name:   string
+    season: number
+  }
+  fixture: {
+    id:       number
+    timezone: string
+    date:     string
+    timestamp: number
+  }
+  update:      string       // ISO timestamp of last odds update
+  bookmakers:  ApfOddsBookmaker[]
+}
+
+/**
+ * Fetch pre-match odds for one or more fixtures.
+ *
+ * Supports batch mode by date+league — one call returns all fixtures for that day.
+ * Supports single fixture by ID.
+ * Supports bookmaker filter to reduce response size.
+ *
+ * Bookmaker IDs: 8=Bet365, 1=10Bet, 7=William Hill, 6=Bwin, 5=Unibet
+ * Market ID 1 = 'Match Winner' (Home/Draw/Away) — the only market we store.
+ *
+ * @example
+ *   // All WC 2026 fixtures on a given date, Bet365 only
+ *   fetchApfOdds({ league: 1, season: 2026, date: '2026-06-14', bookmaker: 8 })
+ *   // Single fixture
+ *   fetchApfOdds({ fixture: 1489374, bookmaker: 8 })
+ */
+export function fetchApfOdds(params: {
+  fixture?:   number
+  league?:    number
+  season?:    number
+  date?:      string    // YYYY-MM-DD
+  bookmaker?: number    // filter to one bookmaker (reduces response size)
+}): Promise<ApfResult<ApfOddsPayload[]>> {
+  return apfFetch<ApfOddsPayload[]>('odds', params as Record<string, string | number | undefined>)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Player squad payload
 // ─────────────────────────────────────────────────────────────────────────────
 
