@@ -3,18 +3,27 @@
  *
  * Vercel Cron — fetches current scores/statuses from football APIs for matches
  * that are not yet finished or are missing scores within a 2-day lookback window.
- * Schedule: 0 23 * * *  (23:00 UTC — after World Cup evening matches finish)
+ * Schedule: 0 23 * * *  (23:00 UTC — covers EPL/CL/non-WC evening matches)
  *
  * Auth:  Authorization: Bearer <CRON_SECRET>
  *        Vercel sets this header automatically from the CRON_SECRET env var.
  *
- * Does NOT settle predictions — auto-settle runs at 23:30 UTC after this.
+ * Does NOT settle predictions — auto-settle at 03:00 UTC handles that.
+ *
+ * During the World Cup, sync-wc-results (called every 3 min by CF Worker)
+ * covers WC matches. This route is the fallback for all other competitions,
+ * and is critical post-WC when the CF Worker stops running.
+ *
+ * Logs every run to cron_runs (route, status, summary, error, ran_at).
  */
 
 import { type NextRequest, NextResponse }         from 'next/server'
 import { getServerSupabaseClient }               from '@/lib/supabase/server'
 import { normalizeFdStatus, normalizeApfStatus } from '@/lib/football/status'
 import { fetchApfFixtures }                      from '@/lib/football/apiFootball'
+import { logCronRun }                            from '@/lib/cron/logCronRun'
+
+const CRON_ROUTE = '/api/cron/sync-results'
 
 const DAYS_BACK    = 2   // catch matches from up to 2 days ago still pending
 const DAYS_FORWARD = 0   // no need to look ahead — sync active/recent only
@@ -78,11 +87,13 @@ export async function GET(req: NextRequest) {
 
   if (queryErr) {
     console.error('[cron/sync-results] query error:', queryErr.message)
+    await logCronRun({ supabase, route: CRON_ROUTE, status: 'error', error: `query: ${queryErr.message}` })
     return NextResponse.json({ success: false, error: queryErr.message }, { status: 500 })
   }
 
   if (!candidates || candidates.length === 0) {
     console.info('[cron/sync-results] no candidates in window')
+    await logCronRun({ supabase, route: CRON_ROUTE, status: 'success', summary: { scanned: 0, updated: 0, apiCalls: 0, skipped: 0 } })
     return NextResponse.json({ success: true, scanned: 0, updated: 0 })
   }
 
@@ -173,6 +184,14 @@ export async function GET(req: NextRequest) {
 
   console.info(`[cron/sync-results] scanned=${candidates.length} updated=${updated} skipped=${skipped} apiCalls=${apiCalls}`)
   if (errors.length > 0) console.warn('[cron/sync-results] errors:', errors)
+
+  await logCronRun({
+    supabase,
+    route:   CRON_ROUTE,
+    status:  errors.length > 0 && updated === 0 ? 'error' : 'success',
+    summary: { scanned: candidates.length, updated, skipped, apiCalls, rateLimitHit, apfBudgetHit },
+    error:   errors.length > 0 ? errors.join('; ') : null,
+  })
 
   return NextResponse.json({
     success:  errors.length === 0 || updated > 0,

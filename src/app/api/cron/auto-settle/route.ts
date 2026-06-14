@@ -2,7 +2,8 @@
  * GET /api/cron/auto-settle
  *
  * Vercel Cron endpoint — triggered daily at 03:00 UTC via vercel.json.
- * Schedule: 0 3 * * *  (Hobby plan limit: daily only; upgrade to Pro for sub-daily).
+ * Also triggered every 5 minutes by the Cloudflare Worker during WC match days.
+ * Schedule: 0 3 * * *
  * Scans finished matches and settles unsettled predictions automatically.
  *
  * Auth:  Authorization: Bearer <CRON_SECRET>
@@ -11,13 +12,17 @@
  *
  * Always runs as a real settlement (dryRun=false, limit=25).
  * Idempotent — safe to call multiple times.
+ *
+ * Logs every run to cron_runs (route, status, summary, error, ran_at).
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { findQualifiedMatches, runAutoSettle } from '@/lib/auto-settle'
+import { logCronRun }                     from '@/lib/cron/logCronRun'
 
-const CRON_LIMIT = 25
+const CRON_LIMIT  = 25
+const CRON_ROUTE  = '/api/cron/auto-settle'
 
 function err(message: string, status: number) {
   return NextResponse.json({ success: false, error: message }, { status })
@@ -43,10 +48,13 @@ export async function GET(req: NextRequest) {
 
   if (scanErr) {
     console.error('[cron/auto-settle] scan:', scanErr)
+    await logCronRun({ supabase, route: CRON_ROUTE, status: 'error', error: `scan: ${scanErr}` })
     return err('Failed to fetch finished matches', 500)
   }
 
   if (scanned === 0 || qualified.length === 0) {
+    // No-op: don't log to cron_runs — these happen every 5 min from CF Worker
+    // and would produce hundreds of noise rows per day.
     return NextResponse.json({
       success:  true,
       scanned:  0,
@@ -60,6 +68,21 @@ export async function GET(req: NextRequest) {
   if (result.errors.length > 0) {
     console.error('[cron/auto-settle] errors:', result.errors)
   }
+
+  // ── Log to cron_runs (only when there was actual work to do) ───────────────
+  await logCronRun({
+    supabase,
+    route:   CRON_ROUTE,
+    status:  result.success ? 'success' : 'error',
+    summary: {
+      scanned:          result.scanned,
+      settledMatches:   result.settledMatches,
+      totalPredictions: result.totalPredictions,
+      totalCorrect:     result.totalCorrect,
+      totalXPAwarded:   result.totalXPAwarded,
+    },
+    error: result.errors.length > 0 ? result.errors.join('; ') : null,
+  })
 
   return NextResponse.json({
     success:          result.success,

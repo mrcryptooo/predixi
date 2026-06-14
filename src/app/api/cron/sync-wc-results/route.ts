@@ -25,6 +25,9 @@ import { getServerSupabaseClient }           from '@/lib/supabase/server'
 import { normalizeApfStatus, inferOutcome }  from '@/lib/football/status'
 import { fetchApfFixtures }                  from '@/lib/football/apiFootball'
 import { APF_WORLD_CUP }                     from '@/lib/football/apiFootballConfig'
+import { logCronRun }                        from '@/lib/cron/logCronRun'
+
+const CRON_ROUTE = '/api/cron/sync-wc-results'
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -78,6 +81,7 @@ export async function GET(req: NextRequest) {
     .lte('kickoff', windowEnd.toISOString())
 
   if (!windowErr && (activeCount ?? 0) === 0) {
+    // Silent skip — no logging, this fires every 3 min and would create ~480 rows/day.
     return NextResponse.json({ success: true, skipped: true, reason: 'no active WC match window', from, to })
   }
 
@@ -91,6 +95,13 @@ export async function GET(req: NextRequest) {
 
   if (!result.ok) {
     console.error('[cron/sync-wc-results] APF fetch error:', result.error)
+    await logCronRun({
+      supabase,
+      route:   CRON_ROUTE,
+      status:  'error',
+      summary: { from, to, budgetExceeded: result.budgetExceeded ?? false, rateLimitHit: result.rateLimitHit ?? false },
+      error:   result.error,
+    })
     return NextResponse.json({
       success:   false,
       error:     result.error,
@@ -192,6 +203,17 @@ export async function GET(req: NextRequest) {
     ` callsToday=${result.callsToday}`
   )
   if (errors.length > 0) console.warn('[cron/sync-wc-results] errors:', errors)
+
+  // Log only when something changed or an error occurred — avoids ~480 no-op rows/day.
+  if (updated > 0 || errors.length > 0) {
+    await logCronRun({
+      supabase,
+      route:   CRON_ROUTE,
+      status:  errors.length === 0 ? 'success' : 'error',
+      summary: { from, to, scanned: fixtures.length, updated, unchanged, callsToday: result.callsToday },
+      error:   errors.length > 0 ? errors.join('; ') : null,
+    })
+  }
 
   return NextResponse.json({
     success:   errors.length === 0 || updated > 0,

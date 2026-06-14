@@ -1,5 +1,6 @@
 {
   "crons": [
+    { "path": "/api/cron/sync-results",  "schedule": "0 23 * * *" },
     { "path": "/api/cron/auto-settle",   "schedule": "0 3 * * *"  },
     { "path": "/api/cron/score-daily-xi","schedule": "0 2 * * *"  },
     { "path": "/api/cron/sync-fixtures", "schedule": "30 0 * * *" },
