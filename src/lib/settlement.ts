@@ -13,8 +13,11 @@ import { awardReferralBonus }               from '@/lib/referrals/awardReferralB
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const CORRECT_PREDICTION_XP = 25   // XP awarded for a correct prediction
+export const CORRECT_PREDICTION_XP = 25   // Legacy flat XP (kept for reference)
 export const WRONG_PREDICTION_XP   = 0    // XP awarded for a wrong prediction
+
+// Equal-probability fallback XP: p = 1/3 → clamp(round(25 × √(0.5 / (1/3))), 10, 100) = 31
+export const FALLBACK_CORRECT_XP = 31
 
 export type MatchOutcome = 'home' | 'draw' | 'away'
 
@@ -29,7 +32,40 @@ export const OUTCOME_TO_DB: Record<MatchOutcome, string> = {
 // XP helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Returns XP to award based on whether the prediction was correct. */
+export type MatchOdds = {
+  home: number   // decimal odds, e.g. 1.65
+  draw: number
+  away: number
+}
+
+/**
+ * Computes XP for a correct prediction from stored pre-kickoff decimal odds.
+ *
+ * Formula: xp = clamp(round(25 × √(0.5 / p)), 10, 100)
+ * where p = overround-normalised implied probability of the predicted outcome.
+ *
+ * Examples: strong favourite (p≈0.70) → ~22 XP · even match (p≈0.33) → ~31 XP
+ *           underdog (p≈0.20) → ~40 XP · heavy underdog (p≈0.07) → ~67 XP
+ */
+export function computeOddsXP(
+  odds:    MatchOdds,
+  outcome: 'H' | 'D' | 'A',
+): { xp: number; probability: number } {
+  const rawH      = 1 / odds.home
+  const rawD      = 1 / odds.draw
+  const rawA      = 1 / odds.away
+  const overround = rawH + rawD + rawA
+
+  const rawP = outcome === 'H' ? rawH : outcome === 'D' ? rawD : rawA
+  const p    = rawP / overround
+
+  return {
+    xp:          Math.min(100, Math.max(10, Math.round(25 * Math.sqrt(0.5 / p)))),
+    probability: p,
+  }
+}
+
+/** Returns XP to award based on whether the prediction was correct (wrong = 0). */
 export function calculatePredictionXP(isCorrect: boolean): number {
   return isCorrect ? CORRECT_PREDICTION_XP : WRONG_PREDICTION_XP
 }
@@ -53,6 +89,7 @@ export type AwardXPEventInput = {
   predictionId:  string
   xpAmount:      number
   isCorrect:     boolean
+  oddsBased?:    boolean         // true when XP was computed from stored odds
 }
 
 /**
@@ -67,7 +104,7 @@ export async function awardXPEvent(input: AwardXPEventInput): Promise<{
   duplicate: boolean
   error?:    string
 }> {
-  const { supabase, walletAddress, matchId, predictionId, xpAmount, isCorrect } = input
+  const { supabase, walletAddress, matchId, predictionId, xpAmount, isCorrect, oddsBased } = input
 
   const { error } = await supabase
     .from('xp_events')
@@ -81,6 +118,7 @@ export async function awardXPEvent(input: AwardXPEventInput): Promise<{
         match_id:   matchId,
         is_correct: isCorrect,
         xp_awarded: xpAmount,
+        ...(oddsBased !== undefined && { odds_based: oddsBased }),
       },
     })
 
@@ -227,13 +265,26 @@ export type SettlePredictionResult = {
 export async function settlePrediction(
   supabase:   SupabaseClient,
   pred:       PredictionRecord,
-  outcome:    string,   // DB outcome code: 'H' | 'D' | 'A'
+  outcome:    string,       // DB outcome code: 'H' | 'D' | 'A'
   matchId:    string,
+  matchOdds?: MatchOdds | null,
 ): Promise<SettlePredictionResult> {
   const errors: string[] = []
   const isCorrect   = pred.outcome === outcome
-  const xpAwarded   = calculatePredictionXP(isCorrect)
   let   isDuplicate = false
+  let   oddsBased   = false
+
+  // Compute XP — odds-based formula if odds are available, equal-probability fallback otherwise
+  let xpAwarded = 0
+  if (isCorrect) {
+    if (matchOdds) {
+      xpAwarded = computeOddsXP(matchOdds, pred.outcome as 'H' | 'D' | 'A').xp
+      oddsBased = true
+    } else {
+      xpAwarded = FALLBACK_CORRECT_XP
+      console.log(`[settlement] odds unavailable for pred ${pred.id} match ${matchId} — fallback XP=${xpAwarded}`)
+    }
+  }
 
   const profile = Array.isArray(pred.profiles) ? pred.profiles[0] : pred.profiles
 
@@ -288,6 +339,7 @@ export async function settlePrediction(
       predictionId:  pred.id,
       xpAmount:      xpAwarded,
       isCorrect,
+      oddsBased,
     })
 
     if (!xpResult.success) {

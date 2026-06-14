@@ -24,6 +24,7 @@ import {
   OUTCOME_TO_DB,
   settlePrediction,
   type MatchOutcome,
+  type MatchOdds,
   type PredictionRecord,
 } from '@/lib/settlement'
 import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
@@ -72,10 +73,10 @@ export async function POST(req: NextRequest) {
   const dbOutcome    = OUTCOME_TO_DB[result]   // 'H' | 'D' | 'A'
   const supabase     = getServerSupabaseClient()
 
-  // ── 3. Check if match already settled ─────────────────────────────────────
+  // ── 3. Fetch match (check if settled + grab stored odds) ──────────────────
   const { data: match } = await supabase
     .from('matches')
-    .select('id, actual_outcome')
+    .select('id, actual_outcome, odds_home, odds_draw, odds_away')
     .eq('id', matchIdClean)
     .maybeSingle()
 
@@ -125,6 +126,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 5. Settle each prediction ──────────────────────────────────────────────
+  const oH = match?.odds_home  as number | null | undefined
+  const oD = match?.odds_draw  as number | null | undefined
+  const oA = match?.odds_away  as number | null | undefined
+  const matchOdds: MatchOdds | null = (oH && oD && oA) ? { home: oH, draw: oD, away: oA } : null
+
   let settledCount = 0
   let correctCount = 0
   let totalXp      = 0
@@ -132,7 +138,7 @@ export async function POST(req: NextRequest) {
   const allErrors: string[] = []
 
   for (const pred of predictions as unknown as PredictionRecord[]) {
-    const res = await settlePrediction(supabase, pred, dbOutcome, matchIdClean)
+    const res = await settlePrediction(supabase, pred, dbOutcome, matchIdClean, matchOdds)
 
     if (res.errors.length > 0) {
       allErrors.push(...res.errors.map(e => `[pred:${res.predictionId}] ${e}`))

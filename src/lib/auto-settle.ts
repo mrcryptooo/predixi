@@ -7,8 +7,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { settlePrediction, type PredictionRecord } from '@/lib/settlement'
-import { checkAndAwardBadges }                     from '@/lib/badges/checkAndAward'
+import { settlePrediction, type PredictionRecord, type MatchOdds } from '@/lib/settlement'
+import { checkAndAwardBadges }                                      from '@/lib/badges/checkAndAward'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -22,6 +22,7 @@ export type MatchCandidate = {
   inferredResult:           string
   dbOutcome:                'H' | 'D' | 'A'
   unsettledPredictionCount: number
+  odds:                     MatchOdds | null
 }
 
 export type AutoSettleRunResult = {
@@ -69,7 +70,7 @@ export async function findQualifiedMatches(
   //   • xp_events unique constraint      (duplicate XP impossible)
   const { data: candidates, error: matchErr } = await supabase
     .from('matches')
-    .select('id, home_team_name, away_team_name, home_score, away_score, kickoff')
+    .select('id, home_team_name, away_team_name, home_score, away_score, kickoff, odds_home, odds_draw, odds_away')
     .eq('status', 'finished')
     .not('home_score', 'is', null)
     .not('away_score', 'is', null)
@@ -104,6 +105,10 @@ export async function findQualifiedMatches(
 
     if (!count || count === 0) continue
 
+    const mH = m.odds_home as number | null
+    const mD = m.odds_draw as number | null
+    const mA = m.odds_away as number | null
+
     qualified.push({
       matchId:                  m.id,
       homeTeam:                 m.home_team_name,
@@ -112,6 +117,7 @@ export async function findQualifiedMatches(
       inferredResult:           outcomeLabel(dbOutcome),
       dbOutcome,
       unsettledPredictionCount: count,
+      odds: (mH && mD && mA) ? { home: mH, draw: mD, away: mA } : null,
     })
   }
 
@@ -137,7 +143,7 @@ export async function runAutoSettle(
   const allErrors: string[] = []
 
   for (const candidate of qualified) {
-    const { matchId, dbOutcome } = candidate
+    const { matchId, dbOutcome, odds } = candidate
 
     const { data: predictions, error: predErr } = await supabase
       .from('predictions')
@@ -171,7 +177,7 @@ export async function runAutoSettle(
     const matchErrors: string[] = []
 
     for (const pred of predictions as unknown as PredictionRecord[]) {
-      const res = await settlePrediction(supabase, pred, dbOutcome, matchId)
+      const res = await settlePrediction(supabase, pred, dbOutcome, matchId, odds)
       if (res.errors.length > 0) {
         matchErrors.push(...res.errors.map(e => `[pred:${res.predictionId}] ${e}`))
       } else {
