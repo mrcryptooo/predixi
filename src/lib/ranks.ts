@@ -7,12 +7,14 @@
  *
  * ── Tier thresholds ───────────────────────────────────────────────────────────
  *
- *   Bronze    0 – 99 XP
- *   Silver   100 – 299 XP
- *   Gold     300 – 599 XP
- *   Platinum 600 – 999 XP
- *   Diamond 1000 – 1999 XP
- *   Legend  2000+ XP
+ *   Bronze      0 –   99 XP
+ *   Silver    100 –  399 XP
+ *   Gold      400 –  999 XP
+ *   Platinum 1000 – 1999 XP
+ *   Diamond  2000 – 3499 XP
+ *   Legend   3500+    XP
+ *
+ *   Reserved (not yet live): Mythic / GOAT / World Class — future 10 000+ XP prestige tier.
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,11 +42,11 @@ export type RankProgress = {
 
 export const RANK_TIERS: readonly RankTier[] = [
   { id: 'bronze',   label: 'Bronze',   minXp:    0, maxXp:   99, color: '#cd7f32', emoji: '🥉' },
-  { id: 'silver',   label: 'Silver',   minXp:  100, maxXp:  299, color: '#c0c0c0', emoji: '🥈' },
-  { id: 'gold',     label: 'Gold',     minXp:  300, maxXp:  599, color: '#ffd700', emoji: '🥇' },
-  { id: 'platinum', label: 'Platinum', minXp:  600, maxXp:  999, color: '#e5e4e2', emoji: '💎' },
-  { id: 'diamond',  label: 'Diamond',  minXp: 1000, maxXp: 1999, color: '#b9f2ff', emoji: '💠' },
-  { id: 'legend',   label: 'Legend',   minXp: 2000, maxXp: null, color: '#ff6b35', emoji: '👑' },
+  { id: 'silver',   label: 'Silver',   minXp:  100, maxXp:  399, color: '#c0c0c0', emoji: '🥈' },
+  { id: 'gold',     label: 'Gold',     minXp:  400, maxXp:  999, color: '#ffd700', emoji: '🥇' },
+  { id: 'platinum', label: 'Platinum', minXp: 1000, maxXp: 1999, color: '#e5e4e2', emoji: '💎' },
+  { id: 'diamond',  label: 'Diamond',  minXp: 2000, maxXp: 3499, color: '#b9f2ff', emoji: '💠' },
+  { id: 'legend',   label: 'Legend',   minXp: 3500, maxXp: null, color: '#ff6b35', emoji: '👑' },
 ] as const
 
 // ── Core helpers ──────────────────────────────────────────────────────────────

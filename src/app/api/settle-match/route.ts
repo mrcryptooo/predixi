@@ -14,14 +14,14 @@
  *   - Correct:  10 XP, is_correct = true
  *   - Wrong:     0 XP, is_correct = false
  *
- * Rank thresholds (from XP_ECONOMY.md):
- *   bronze 0 | silver 100 | gold 300 | platinum 600 | diamond 1000 | legend 2000
+ * Rank thresholds: see src/lib/ranks.ts (single source of truth).
  *
  * TODO (future): streak updates, match multiplier, underdog bonus.
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
+import { computeRank }                    from '@/lib/ranks'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -37,15 +37,6 @@ const VALID_OUTCOMES = new Set<Outcome>(['H', 'D', 'A'])
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status })
-}
-
-function computeRank(xp: number): string {
-  if (xp >= 2000) return 'legend'
-  if (xp >= 1000) return 'diamond'
-  if (xp >=  600) return 'platinum'
-  if (xp >=  300) return 'gold'
-  if (xp >=  100) return 'silver'
-  return 'bronze'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
