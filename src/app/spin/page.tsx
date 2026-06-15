@@ -330,10 +330,6 @@ export default function SpinPage() {
               <span className="relative z-10">{cfg.node}</span>
             </motion.button>
 
-            {/* Disclaimer ─────────────────────────────────────────────────── */}
-            <p className="text-center text-[10px] text-text-muted/50 max-w-[250px] leading-relaxed">
-              $1 · $3 · $5 are display-only. All rewards are XP.
-            </p>
           </motion.div>
         )}
       </div>
