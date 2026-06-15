@@ -27,12 +27,25 @@ import {
   SPIN_EXPIRY_MINUTES,
 }                                         from '@/lib/spin'
 import { trackSpinEvent }                 from '@/lib/spin-analytics'
+import { checkRateLimit }                 from '@/lib/ratelimit'
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status })
 }
 
 export async function POST(req: NextRequest) {
+  // ── 0. IP rate limit (Upstash Redis — persistent across Vercel instances) ──
+  // 5 requests per minute per IP.  Falls through silently if Redis is not
+  // configured (UPSTASH_REDIS_REST_URL / TOKEN unset).
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const rl  = await checkRateLimit('spin:prepare:ip', ip, 5, '1 m')
+  if (rl.limited) {
+    return NextResponse.json(
+      { success: false, error: 'Too many requests — try again shortly' },
+      { status: 429 },
+    )
+  }
+
   // ── 1. Parse body ──────────────────────────────────────────────────────────
   let body: Record<string, unknown>
   try { body = await req.json() } catch { return err('Invalid JSON body', 400) }

@@ -26,7 +26,8 @@
 
 import { type NextRequest, NextResponse }            from 'next/server'
 import { getServerSupabaseClient }                   from '@/lib/supabase/server'
-import { basePublicClient }                          from '@/lib/auth/verify-base-wallet'
+import { hashCommitment }                            from '@/lib/onchain/commitment'
+import { verifyOnchainSubmission }                   from '@/lib/onchain/verifySubmission'
 import { computeRank }                               from '@/lib/ranks'
 import { updateLeaderboardXpForSpin, getSpinStatus } from '@/lib/spin'
 import { trackSpinEvent }                            from '@/lib/spin-analytics'
@@ -98,19 +99,24 @@ export async function POST(req: NextRequest) {
 
   if (txConflict) return err('Transaction already used for a spin', 409)
 
-  // ── 5. Verify transaction on Base mainnet ─────────────────────────────────
-  let receipt: Awaited<ReturnType<typeof basePublicClient.getTransactionReceipt>>
-  try {
-    receipt = await basePublicClient.getTransactionReceipt({
-      hash: txHash as `0x${string}`,
-    })
-  } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e)
-    return err(`Could not fetch transaction from Base: ${detail}`, 422)
-  }
-
-  if (receipt.status !== 'success') {
-    return err('Transaction reverted on Base — only successful transactions are accepted', 422)
+  // ── 5. Verify on-chain: CommitmentSubmitted event must match spin owner ────
+  // Re-derives the commitment hash from the spin entry (wallet + spinId) and
+  // verifies it against the on-chain CommitmentSubmitted event.  Crucially,
+  // event.user must equal entry.wallet_address — an attacker who prepared a
+  // spin for another wallet cannot claim it with their own transaction because
+  // their tx would carry event.user = attacker, not the victim's address.
+  const expectedHash = hashCommitment({
+    type:          'spin',
+    walletAddress: (entry.wallet_address as string).toLowerCase(),
+    spinId:        entry.id as string,
+  })
+  const verify = await verifyOnchainSubmission(
+    txHash as string,
+    entry.wallet_address as string,
+    expectedHash,
+  )
+  if (!verify.ok) {
+    return err(`Transaction verification failed: ${verify.error}`, 422)
   }
 
   // ── 6. Load profile ───────────────────────────────────────────────────────

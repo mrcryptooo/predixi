@@ -15,6 +15,7 @@ import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { createWCCommitment }             from '@/lib/onchain/commitment'
 import { checkAndAwardBadges }            from '@/lib/badges/checkAndAward'
 import { verifyOnchainSubmission }        from '@/lib/onchain/verifySubmission'
+import { getCanonicalWCXpReward }         from '@/lib/wc-prediction-config'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -122,9 +123,6 @@ export async function POST(req: NextRequest) {
     if (typeof xpReward !== 'number' || !Number.isFinite(xpReward) || xpReward < 0) {
       return err('xpReward must be a non-negative finite number', 400)
     }
-    if ((xpReward as number) > 10000) {
-      return err('xpReward must be 10000 or fewer', 400)
-    }
     if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
       return err('txHash is required — must be 0x-prefixed 64-hex transaction hash', 400)
     }
@@ -135,12 +133,25 @@ export async function POST(req: NextRequest) {
       ? deadline.trim()
       : null
 
-    // ── Compute commitment hash ───────────────────────────────────────────────
+    // ── Validate xpReward against server-side canonical config ────────────────
+    // The canonical value is the source of truth.  Rejecting mismatches means
+    // an attacker cannot inflate XP by submitting an on-chain tx with a higher
+    // xpReward — the server recomputes the hash with the canonical value, so any
+    // tampered hash in the on-chain event will not match.
+    const canonicalXp = getCanonicalWCXpReward(cleanKey)
+    if (canonicalXp === null) {
+      return err(`Unknown predictionKey '${cleanKey}' — not a recognised WC prediction`, 400)
+    }
+    if ((xpReward as number) !== canonicalXp) {
+      return err(`xpReward ${xpReward} does not match the configured value for '${cleanKey}' (expected ${canonicalXp})`, 400)
+    }
+
+    // ── Compute commitment hash using canonical XP (not the raw client value) ─
     const { commitmentHash } = createWCCommitment({
       walletAddress: normalizedWallet,
       predictionKey: cleanKey,
       selectedValue: selectedValue as string[],
-      xpReward:      xpReward as number,
+      xpReward:      canonicalXp,
     })
 
     // ── Verify on-chain TX — must precede any DB write ────────────────────────
@@ -166,7 +177,7 @@ export async function POST(req: NextRequest) {
           prediction_key:      cleanKey,
           prediction_type:     (predictionType as string).trim(),
           selected_value:      selectedValue,
-          xp_reward:           xpReward as number,
+          xp_reward:           canonicalXp,
           status:              'pending',
           deadline:            deadlineTs,
           commitment_hash:     commitmentHash,

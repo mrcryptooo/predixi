@@ -104,6 +104,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Internal-only gate ────────────────────────────────────────────────────
+    // This endpoint writes directly to the XP ledger and must not be callable
+    // by unauthenticated external clients.  All server-side XP settlement paths
+    // (spin claim, WC settlement, daily-xi scoring) write to Supabase directly
+    // and do not use this HTTP route.  The route is kept for future tooling but
+    // is locked behind an internal secret.
+    const internalSecret = process.env.XP_EVENTS_INTERNAL_SECRET
+    if (!internalSecret) {
+      console.error('[POST /api/xp-events] XP_EVENTS_INTERNAL_SECRET not configured')
+      return err('Endpoint not available', 503)
+    }
+    if (req.headers.get('x-internal-secret') !== internalSecret) {
+      return err('Unauthorized', 401)
+    }
+
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== 'object') return err('Invalid JSON body', 400)
 
