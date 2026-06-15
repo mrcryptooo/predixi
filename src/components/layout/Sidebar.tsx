@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Home, CalendarDays, Trophy, Globe, User, Zap, BookOpen } from "lucide-react";
+import { Home, CalendarDays, Trophy, Globe, User, Zap, BookOpen, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -16,6 +16,7 @@ import { NotificationBell } from "@/components/notifications/NotificationBell";
 const navItems = [
   { href: "/",            label: "Home",        icon: Home         },
   { href: "/matches",     label: "Matches",     icon: CalendarDays },
+  { href: "/spin",        label: "Daily Spin",  icon: Sparkles     },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy       },
   { href: "/world-cup",   label: "World Cup",   icon: Globe        },
   { href: "/profile",     label: "Profile",     icon: User         },

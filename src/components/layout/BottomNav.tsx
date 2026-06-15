@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, CalendarDays, Trophy, Globe, User } from "lucide-react";
+import { Home, CalendarDays, Trophy, Globe, User, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/",            label: "Home",     icon: Home         },
   { href: "/matches",     label: "Matches",  icon: CalendarDays },
+  { href: "/spin",        label: "Spin",     icon: Sparkles     },
   { href: "/leaderboard", label: "Board",    icon: Trophy       },
   { href: "/world-cup",   label: "WC 2026",  icon: Globe        },
   { href: "/profile",     label: "Profile",  icon: User         },
