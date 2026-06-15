@@ -37,19 +37,19 @@ const SLOTS = [
   // 0 — 5 XP
   { label: '5',   unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2a4a90', text: '#4d6abf', isDollar: false, segIdx: 0 },
   // 1 — $1 (visual-only — never included in reward selection)
-  { label: '$1',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 7 },
+  { label: '$1',  unit: '',   bg: '#071a0e', edge: '#0f3018', arcColor: '#1a5a28', text: '#ffffff', isDollar: true,  segIdx: 7 },
   // 2 — 100 XP
   { label: '100', unit: 'XP', bg: '#071535', edge: '#1a3070', arcColor: '#1e50b8', text: '#4488f0', isDollar: false, segIdx: 5 },
   // 3 — 15 XP
   { label: '15',  unit: 'XP', bg: '#081228', edge: '#182850', arcColor: '#283c80', text: '#5272c0', isDollar: false, segIdx: 2 },
   // 4 — $3 (visual-only — never included in reward selection)
-  { label: '$3',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 8 },
+  { label: '$3',  unit: '',   bg: '#071a0e', edge: '#0f3018', arcColor: '#1a5a28', text: '#ffffff', isDollar: true,  segIdx: 8 },
   // 5 — 250 XP (jackpot)
   { label: '250', unit: 'XP', bg: '#100840', edge: '#2a1068', arcColor: '#5028b8', text: '#8860e8', isDollar: false, segIdx: 6 },
   // 6 — 10 XP
   { label: '10',  unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2040a0', text: '#587ae0', isDollar: false, segIdx: 1 },
   // 7 — $5 (visual-only — never included in reward selection)
-  { label: '$5',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 9 },
+  { label: '$5',  unit: '',   bg: '#071a0e', edge: '#0f3018', arcColor: '#1a5a28', text: '#ffffff', isDollar: true,  segIdx: 9 },
   // 8 — 50 XP
   { label: '50',  unit: 'XP', bg: '#081430', edge: '#1a2e65', arcColor: '#1a4aa8', text: '#3878e8', isDollar: false, segIdx: 4 },
   // 9 — 25 XP
@@ -193,7 +193,7 @@ export function SpinWheel({
 
             {/* Text glow for XP labels */}
             <filter id="xp-text-glow" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -276,20 +276,20 @@ export function SpinWheel({
             const tp        = polar(R_TEXT, mid)
             const isDollar  = slot.isDollar
             const isJackpot = slot.label === '250'
-            const labelSize = isDollar ? (slot.label.length >= 3 ? 9.5 : 11)
-              : slot.label.length >= 3 ? 14
-              : 18
+            const labelSize = isDollar ? 16
+              : slot.label.length >= 3 ? 20
+              : 24
 
             return (
               <g key={i} transform={`rotate(${mid},${tp.x.toFixed(2)},${tp.y.toFixed(2)})`}>
                 <text
                   x={tp.x}
-                  y={isDollar ? tp.y + 1 : slot.unit ? tp.y - 5 : tp.y}
+                  y={isDollar ? tp.y : slot.unit ? tp.y - 5 : tp.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={labelSize}
-                  fontWeight={isDollar ? '600' : '900'}
-                  fill={isLanded ? '#ffffff' : isDollar ? 'rgba(255,255,255,0.70)' : '#ffffff'}
+                  fontWeight="900"
+                  fill="#ffffff"
                   fontFamily="Inter, system-ui, sans-serif"
                   opacity={1}
                   letterSpacing={isJackpot ? '-0.03em' : '-0.01em'}
@@ -300,12 +300,12 @@ export function SpinWheel({
                 {slot.unit && (
                   <text
                     x={tp.x}
-                    y={tp.y + 8}
+                    y={tp.y + 10}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={8}
+                    fontSize={10}
                     fontWeight="900"
-                    fill={isLanded ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.75)'}
+                    fill={isLanded ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.85)'}
                     fontFamily="Inter, system-ui, sans-serif"
                     opacity={1}
                     letterSpacing="0.1em"
@@ -313,18 +313,6 @@ export function SpinWheel({
                   >
                     {slot.unit}
                   </text>
-                )}
-                {/* Lock icon — visual-only segment, never included in reward selection */}
-                {isDollar && !isLanded && (
-                  <g transform={`translate(${tp.x - 5}, ${tp.y + 5})`} opacity="0.65">
-                    {/* lock body */}
-                    <rect x="0.5" y="4" width="9" height="6.5" rx="1.5"
-                      fill="rgba(255,255,255,0.55)" />
-                    {/* lock shackle */}
-                    <path d="M2.5 4 V2.2 a2.5 2.5 0 0 1 5 0 V4"
-                      fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.4"
-                      strokeLinecap="round" />
-                  </g>
                 )}
               </g>
             )

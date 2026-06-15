@@ -176,17 +176,31 @@ export function useSpin(): UseSpinReturn {
 
       // ── Phase: claiming — wheel starts AFTER tx confirmed ─────────────
       setPhase('claiming')
-      // Start fast spin now that tx is confirmed
+
+      // Fire claim API immediately — runs in parallel with the spin animation.
+      const claimFetchPromise = fetch('/api/spin/claim', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ spinId, txHash }),
+      })
+
+      // Phase A — Acceleration: ramp from 0 to cruise speed (180° / 0.3 s, ease-in).
+      // End velocity of ease-in over 180° in 0.3 s ≈ 720°/s — matches cruise phase.
+      await animate(rotation, rotation.get() + 180, {
+        duration: 0.3,
+        ease:     [0.4, 0, 1, 1],
+      })
+
+      // Phase B — Cruise: full casino speed (linear, 720°/s).
       fastSpinRef.current = animate(rotation, rotation.get() + 72_000, {
         duration: 100,
         ease:     'linear',
       })
 
-      const claimRes = await fetch('/api/spin/claim', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ spinId, txHash }),
-      })
+      // Ensure at least 500 ms of visible cruise, then resolve the claim fetch.
+      // If the API already returned during acceleration, this wait is just 500 ms.
+      await new Promise<void>(r => setTimeout(r, 500))
+      const claimRes  = await claimFetchPromise
       const claimData = await claimRes.json() as {
         success:        boolean
         xpAwarded:      number
@@ -199,7 +213,7 @@ export function useSpin(): UseSpinReturn {
       }
       if (!claimData.success) throw new Error(claimData.error ?? 'Failed to claim spin')
 
-      // ── Phases 3-6: premium landing animation ──────────────────────────
+      // ── Casino landing animation (~4 s) ───────────────────────────────
       fastSpinRef.current?.stop()
 
       const cur     = rotation.get()
@@ -207,14 +221,14 @@ export function useSpin(): UseSpinReturn {
 
       setPhase('animating')
 
-      // Phase 3 — Long natural deceleration; overshoots 14° past target so
-      // the next phase feels like a pull-back rather than a sudden direction change.
-      let prevSeg    = -1
-      let startTime  = 0
-      const decelDuration = 3.6
-      await animate(rotation, landing + 14, {
+      // Phase 1 — Dramatic deceleration: covers most distance in first ~5 % of
+      // time then creeps to the overshoot position — classic casino drag feel.
+      let prevSeg   = -1
+      let startTime = 0
+      const decelDuration = 2.8
+      await animate(rotation, landing + 20, {
         duration: decelDuration,
-        ease:     [0.05, 0.85, 0.18, 1],
+        ease:     [0.03, 0.92, 0.12, 1],
         onUpdate: (v) => {
           if (!startTime) startTime = performance.now()
           const elapsed = (performance.now() - startTime) / 1000
@@ -227,19 +241,19 @@ export function useSpin(): UseSpinReturn {
         },
       })
 
-      // Phase 4 — Ease back past center (pull momentum reverses)
-      await animate(rotation, landing - 5, {
-        duration: 0.38,
+      // Phase 2 — Strong pull-back: momentum reverses past center.
+      await animate(rotation, landing - 10, {
+        duration: 0.45,
         ease:     [0.42, 0, 0.58, 1],
       })
 
-      // Phase 5 — Elastic spring to final position
-      await animate(rotation, landing + 2, {
-        duration: 0.30,
+      // Phase 3 — Elastic spring forward.
+      await animate(rotation, landing + 3, {
+        duration: 0.32,
         ease:     [0.34, 1.9, 0.64, 1],
       })
 
-      // Phase 6 — Final micro-settle
+      // Phase 4 — Final micro-settle to exact target.
       await animate(rotation, landing, {
         duration: 0.22,
         ease:     [0.25, 0, 0.5, 1],
