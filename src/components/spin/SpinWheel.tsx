@@ -2,12 +2,12 @@
 
 import { motion, type MotionValue } from 'framer-motion'
 
-// ─── Geometry helpers ─────────────────────────────────────────────────────────
+// ─── Geometry ────────────────────────────────────────────────────────────────
 
-const CX = 150, CY = 150   // SVG viewport centre
-const R_OUTER = 142         // rim of wheel
-const R_TEXT  = 97          // label radial position
-const R_HUB   = 26          // centre medallion radius
+const CX = 150, CY = 150
+const R_OUTER = 138   // outer rim of segments
+const R_TEXT  = 92    // label radial distance
+const R_HUB   = 28    // hub radius
 
 function polar(r: number, angleDeg: number) {
   const rad = (angleDeg - 90) * (Math.PI / 180)
@@ -20,172 +20,342 @@ function slicePath(i: number): string {
   return `M ${CX} ${CY} L ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${R_OUTER} ${R_OUTER} 0 0 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)} Z`
 }
 
+function outerArcPath(i: number): string {
+  const r = R_OUTER - 1
+  const s = polar(r, i * 36 + 0.8)
+  const e = polar(r, (i + 1) * 36 - 0.8)
+  return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${r} ${r} 0 0 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`
+}
+
 // ─── Segment definitions ──────────────────────────────────────────────────────
-//
-// Visual slots 0-9 (clockwise from 12 o'clock).
+
+// Visual slots 0-9, clockwise from 12 o'clock.
 // Dollar slots (1, 4, 7) are cosmetic — server never returns their segmentIndex.
 
 const SLOTS = [
-  // slot 0
-  { label: '5',   unit: 'XP', bg: '#0d1535', border: '#1a2450', text: '#7090d0', segIdx: 0 },
-  // slot 1
-  { label: '$1',  unit: '',   bg: '#1c1305', border: '#3d2800', text: '#d97706', segIdx: 7 },
-  // slot 2
-  { label: '100', unit: 'XP', bg: '#0f1d55', border: '#1e3488', text: '#60a5fa', segIdx: 5 },
-  // slot 3
-  { label: '15',  unit: 'XP', bg: '#0e1b44', border: '#182d70', text: '#8aacff', segIdx: 2 },
-  // slot 4
-  { label: '$5',  unit: '',   bg: '#1c1305', border: '#3d2800', text: '#d97706', segIdx: 8 },
-  // slot 5
-  { label: '250', unit: 'XP', bg: '#280f5e', border: '#4a1eaa', text: '#c4b5fd', segIdx: 6 },
-  // slot 6
-  { label: '10',  unit: 'XP', bg: '#0d1535', border: '#1a2450', text: '#7090d0', segIdx: 1 },
-  // slot 7
-  { label: '$10', unit: '',   bg: '#1c1305', border: '#3d2800', text: '#d97706', segIdx: 9 },
-  // slot 8
-  { label: '50',  unit: 'XP', bg: '#0f1d55', border: '#1e3488', text: '#60a5fa', segIdx: 4 },
-  // slot 9
-  { label: '25',  unit: 'XP', bg: '#0e1b44', border: '#182d70', text: '#8aacff', segIdx: 3 },
+  // 0 — 5 XP
+  { label: '5',   unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2a4a90', text: '#4d6abf', isDollar: false, segIdx: 0 },
+  // 1 — $1 (visual-only)
+  { label: '$1',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 7 },
+  // 2 — 100 XP
+  { label: '100', unit: 'XP', bg: '#071535', edge: '#1a3070', arcColor: '#1e50b8', text: '#4488f0', isDollar: false, segIdx: 5 },
+  // 3 — 15 XP
+  { label: '15',  unit: 'XP', bg: '#081228', edge: '#182850', arcColor: '#283c80', text: '#5272c0', isDollar: false, segIdx: 2 },
+  // 4 — $5 (visual-only)
+  { label: '$5',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 8 },
+  // 5 — 250 XP (jackpot)
+  { label: '250', unit: 'XP', bg: '#100840', edge: '#2a1068', arcColor: '#5028b8', text: '#8860e8', isDollar: false, segIdx: 6 },
+  // 6 — 10 XP
+  { label: '10',  unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2040a0', text: '#587ae0', isDollar: false, segIdx: 1 },
+  // 7 — $10 (visual-only)
+  { label: '$10', unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 9 },
+  // 8 — 50 XP
+  { label: '50',  unit: 'XP', bg: '#081430', edge: '#1a2e65', arcColor: '#1a4aa8', text: '#3878e8', isDollar: false, segIdx: 4 },
+  // 9 — 25 XP
+  { label: '25',  unit: 'XP', bg: '#081228', edge: '#1c2c60', arcColor: '#243870', text: '#5580d0', isDollar: false, segIdx: 3 },
 ] as const
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface SpinWheelProps {
   rotation:            MotionValue<number>
-  /** Highlight a segment after landing. null = none. */
   landedSegmentIndex?: number | null
   size?:               number
+  isSpinning?:         boolean
 }
 
-export function SpinWheel({ rotation, landedSegmentIndex = null, size = 290 }: SpinWheelProps) {
-  return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+export function SpinWheel({
+  rotation,
+  landedSegmentIndex = null,
+  size = 300,
+  isSpinning = false,
+}: SpinWheelProps) {
+  const scale = size / 300
 
-      {/* Outer glow ring */}
+  return (
+    <div
+      className="relative flex-shrink-0 select-none"
+      style={{ width: size, height: size }}
+    >
+      {/* ── Outer ambient glow (non-rotating) ──────────────────────────── */}
       <div
-        className="absolute inset-0 rounded-full pointer-events-none"
+        className="absolute inset-0 rounded-full pointer-events-none transition-all duration-700"
         style={{
-          boxShadow: '0 0 40px rgba(22,82,240,0.30), 0 0 80px rgba(22,82,240,0.10), inset 0 0 20px rgba(22,82,240,0.05)',
+          boxShadow: isSpinning
+            ? '0 0 70px rgba(22,82,240,0.50), 0 0 140px rgba(22,82,240,0.20), 0 0 220px rgba(22,82,240,0.08)'
+            : '0 0 40px rgba(22,82,240,0.28), 0 0 80px rgba(22,82,240,0.10)',
         }}
       />
 
-      {/* Pointer arrow — fixed, sits above rotating wheel */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-20" style={{ top: -4 }}>
-        <svg width="22" height="22" viewBox="0 0 22 22">
+      {/* ── Fixed light sheen (non-rotating, simulates overhead light) ── */}
+      <div
+        className="absolute inset-0 rounded-full pointer-events-none z-10"
+        style={{
+          background: 'radial-gradient(ellipse 55% 28% at 50% 4%, rgba(255,255,255,0.07) 0%, transparent 100%)',
+        }}
+      />
+
+      {/* ── Pointer arrow (non-rotating) ──────────────────────────────── */}
+      <div
+        className="absolute left-1/2 z-20 pointer-events-none"
+        style={{ top: -6 * scale, transform: 'translateX(-50%)' }}
+      >
+        <svg
+          width={Math.round(26 * scale)}
+          height={Math.round(26 * scale)}
+          viewBox="0 0 26 26"
+          overflow="visible"
+        >
+          {/* Shadow */}
           <polygon
-            points="11,18 3,4 19,4"
+            points="13,21 4,5 22,5"
+            fill="rgba(0,0,0,0.5)"
+            transform="translate(0,2)"
+          />
+          {/* Body */}
+          <polygon
+            points="13,21 4,5 22,5"
             fill="#1652F0"
             stroke="#060810"
-            strokeWidth="2"
+            strokeWidth="1.5"
             strokeLinejoin="round"
           />
+          {/* Highlight sheen */}
           <polygon
-            points="11,18 3,4 19,4"
+            points="13,21 4,5 22,5"
             fill="none"
-            stroke="rgba(255,255,255,0.25)"
+            stroke="rgba(100,160,255,0.4)"
             strokeWidth="0.75"
           />
+          {/* Tip dot */}
+          <circle cx="13" cy="21" r="2" fill="#1652F0" />
+          <circle cx="13" cy="21" r="2" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
         </svg>
       </div>
 
-      {/* Rotating wheel */}
-      <motion.div className="w-full h-full" style={{ rotate: rotation }}>
+      {/* ── Rotating wheel ────────────────────────────────────────────── */}
+      <motion.div
+        className="w-full h-full"
+        style={{ rotate: rotation }}
+      >
         <svg
           viewBox="0 0 300 300"
           width={size}
           height={size}
           style={{ display: 'block', overflow: 'visible' }}
         >
-          {/* Segment slices */}
+          <defs>
+            {/* Hub background */}
+            <radialGradient id="hub-bg" cx="50%" cy="35%" r="75%" gradientUnits="objectBoundingBox">
+              <stop offset="0%"   stopColor="#1e2d6a" />
+              <stop offset="100%" stopColor="#040610" />
+            </radialGradient>
+
+            {/* Center-to-edge glow overlay on entire wheel */}
+            <radialGradient id="center-glow" cx="50%" cy="50%" r="50%" gradientUnits="objectBoundingBox">
+              <stop offset="0%"   stopColor="rgba(22,82,240,0.09)" />
+              <stop offset="55%"  stopColor="rgba(22,82,240,0.03)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+            </radialGradient>
+
+            {/* Jackpot (250XP) segment special glow */}
+            <radialGradient id="jackpot-glow" gradientUnits="userSpaceOnUse"
+              cx="150" cy="150" r="140">
+              <stop offset="0%"   stopColor="rgba(140,96,232,0.15)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+            </radialGradient>
+
+            {/* Stripe pattern for dollar segments */}
+            <pattern id="dollar-stripe" patternUnits="userSpaceOnUse" width="8" height="8"
+              patternTransform="rotate(45 0 0)">
+              <line x1="0" y1="0" x2="0" y2="8"
+                stroke="rgba(255,255,255,0.018)" strokeWidth="3" />
+            </pattern>
+
+            {/* Hub glow filter */}
+            <filter id="hub-glow" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+
+            {/* Rim outer glow filter */}
+            <filter id="rim-glow-filter" x="-10%" y="-10%" width="120%" height="120%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* ── Dark base circle ──────────────────────────────────────── */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 12} fill="#04060f" />
+
+          {/* ── Segment fills ─────────────────────────────────────────── */}
           {SLOTS.map((slot, i) => {
-            const isLanded  = landedSegmentIndex !== null && slot.segIdx === landedSegmentIndex
-            const isDollar  = slot.unit === ''
-            const mid       = i * 36 + 18
-            const tp        = polar(R_TEXT, mid)
+            const isLanded   = landedSegmentIndex !== null && slot.segIdx === landedSegmentIndex
+            const isJackpot  = slot.label === '250'
 
             return (
               <g key={i}>
+                {/* Base fill */}
                 <path
                   d={slicePath(i)}
-                  fill={isLanded
-                    ? (isDollar ? '#2a1c00' : '#1a2f80')
-                    : slot.bg}
-                  stroke={isLanded ? (isDollar ? '#f59e0b' : '#3b82f6') : slot.border}
-                  strokeWidth={isLanded ? 1.5 : 0.75}
+                  fill={slot.bg}
+                  stroke={isLanded ? (slot.isDollar ? '#3a2800' : '#2a4ab8') : slot.edge}
+                  strokeWidth={isLanded ? 1 : 0.5}
                 />
 
-                {/* Label group — rotated to align radially outward */}
-                <g transform={`rotate(${mid}, ${tp.x.toFixed(2)}, ${tp.y.toFixed(2)})`}>
-                  <text
-                    x={tp.x}
-                    y={isDollar ? tp.y + 1 : tp.y - 4}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize={
-                      slot.label === '$10' ? 9
-                        : slot.label.length >= 3 ? 10
-                        : 13
-                    }
-                    fontWeight="800"
-                    fill={isLanded ? '#ffffff' : slot.text}
-                    fontFamily="Inter, system-ui, sans-serif"
-                    style={{ letterSpacing: '-0.02em' }}
-                  >
-                    {slot.label}
-                  </text>
-                  {slot.unit && (
-                    <text
-                      x={tp.x}
-                      y={tp.y + 8}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={6.5}
-                      fontWeight="700"
-                      fill={isLanded ? 'rgba(255,255,255,0.65)' : slot.text}
-                      fontFamily="Inter, system-ui, sans-serif"
-                      style={{ letterSpacing: '0.06em' }}
-                    >
-                      {slot.unit}
-                    </text>
-                  )}
-                </g>
+                {/* Dollar stripe overlay */}
+                {slot.isDollar && (
+                  <path d={slicePath(i)} fill="url(#dollar-stripe)" />
+                )}
+
+                {/* Jackpot purple glow overlay */}
+                {isJackpot && (
+                  <path d={slicePath(i)} fill="rgba(80,40,184,0.18)" />
+                )}
+
+                {/* Landing highlight */}
+                {isLanded && (
+                  <path d={slicePath(i)} fill={slot.isDollar ? 'rgba(255,180,0,0.06)' : 'rgba(22,82,240,0.12)'} />
+                )}
+
+                {/* Outer arc edge highlight (XP segments only) */}
+                {slot.arcColor && (
+                  <path
+                    d={outerArcPath(i)}
+                    fill="none"
+                    stroke={isLanded ? '#60a5fa' : slot.arcColor}
+                    strokeWidth={isLanded ? 2 : 1.2}
+                    opacity={isLanded ? 0.8 : 0.4}
+                  />
+                )}
               </g>
             )
           })}
 
-          {/* Radial divider lines (drawn on top of slices) */}
+          {/* ── Centre glow overlay ───────────────────────────────────── */}
+          <circle cx={CX} cy={CY} r={R_OUTER} fill="url(#center-glow)" />
+
+          {/* ── Divider lines ─────────────────────────────────────────── */}
           {SLOTS.map((_, i) => {
             const edge = polar(R_OUTER, i * 36)
             return (
-              <line
-                key={i}
+              <line key={i}
                 x1={CX} y1={CY}
                 x2={edge.x.toFixed(2)} y2={edge.y.toFixed(2)}
                 stroke="#060810"
-                strokeWidth="1.5"
+                strokeWidth="1.2"
               />
             )
           })}
 
-          {/* Outer rim circle */}
-          <circle cx={CX} cy={CY} r={R_OUTER} fill="none" stroke="#1a2255" strokeWidth="1.5" />
+          {/* ── Labels ────────────────────────────────────────────────── */}
+          {SLOTS.map((slot, i) => {
+            const isLanded  = landedSegmentIndex !== null && slot.segIdx === landedSegmentIndex
+            const mid       = i * 36 + 18
+            const tp        = polar(R_TEXT, mid)
+            const isDollar  = slot.isDollar
+            const isJackpot = slot.label === '250'
+            const labelSize = slot.label === '$10' ? 8.5
+              : slot.label.length >= 3 ? 10
+              : 13.5
 
-          {/* Hub shadow */}
-          <circle cx={CX} cy={CY} r={R_HUB + 6} fill="#060810" />
+            return (
+              <g key={i} transform={`rotate(${mid},${tp.x.toFixed(2)},${tp.y.toFixed(2)})`}>
+                <text
+                  x={tp.x}
+                  y={isDollar ? tp.y + 1 : slot.unit ? tp.y - 4.5 : tp.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={labelSize}
+                  fontWeight={isDollar ? '500' : '800'}
+                  fill={isLanded ? '#ffffff' : slot.text}
+                  fontFamily="Inter, system-ui, sans-serif"
+                  opacity={isDollar ? 0.38 : 1}
+                  letterSpacing={isJackpot ? '-0.03em' : '-0.01em'}
+                >
+                  {slot.label}
+                </text>
+                {slot.unit && (
+                  <text
+                    x={tp.x}
+                    y={tp.y + 7}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={6}
+                    fontWeight="700"
+                    fill={isLanded ? 'rgba(255,255,255,0.65)' : slot.text}
+                    fontFamily="Inter, system-ui, sans-serif"
+                    opacity={0.85}
+                    letterSpacing="0.07em"
+                  >
+                    {slot.unit}
+                  </text>
+                )}
+                {/* Dollar dots hint */}
+                {isDollar && !isLanded && (
+                  <text
+                    x={tp.x}
+                    y={tp.y + 8}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={4}
+                    fill="rgba(255,255,255,0.12)"
+                    fontFamily="Inter, system-ui, sans-serif"
+                  >
+                    ✦
+                  </text>
+                )}
+              </g>
+            )
+          })}
 
-          {/* Hub ring */}
-          <circle cx={CX} cy={CY} r={R_HUB}     fill="#090c1e" stroke="#1652F0" strokeWidth="1.5" />
-          <circle cx={CX} cy={CY} r={R_HUB - 7} fill="#060810" stroke="rgba(22,82,240,0.35)" strokeWidth="1" />
+          {/* ── Metallic rim (triple ring) ────────────────────────────── */}
+          {/* Inner dark groove */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 0.5} fill="none" stroke="#04060f" strokeWidth="2.5" />
+          {/* Main rim band */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 4}   fill="none" stroke="#0f1840" strokeWidth="7" />
+          {/* Inner highlight */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 1.5} fill="none" stroke="rgba(60,90,200,0.30)" strokeWidth="1" />
+          {/* Mid highlight */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 4.5} fill="none" stroke="rgba(80,110,220,0.18)" strokeWidth="0.75" />
+          {/* Outer dark edge */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 8}   fill="none" stroke="#060810" strokeWidth="2" />
+          {/* Outer glow ring */}
+          <circle cx={CX} cy={CY} r={R_OUTER + 9}   fill="none"
+            stroke="rgba(22,82,240,0.45)"
+            strokeWidth="1"
+            filter="url(#rim-glow-filter)"
+          />
 
-          {/* PrediXI P */}
+          {/* ── Hub assembly ──────────────────────────────────────────── */}
+          {/* Shadow disc */}
+          <circle cx={CX} cy={CY} r={R_HUB + 8} fill="#030508" />
+          {/* Gradient fill */}
+          <circle cx={CX} cy={CY} r={R_HUB + 4} fill="url(#hub-bg)" />
+          {/* Outer blue ring */}
+          <circle cx={CX} cy={CY} r={R_HUB + 4} fill="none" stroke="#1652F0" strokeWidth="1.5" />
+          {/* Outer subtle highlight */}
+          <circle cx={CX} cy={CY} r={R_HUB + 5} fill="none" stroke="rgba(100,150,255,0.18)" strokeWidth="0.75" />
+          {/* Inner dark ring */}
+          <circle cx={CX} cy={CY} r={R_HUB - 2} fill="#050710" />
+          {/* Inner accent ring */}
+          <circle cx={CX} cy={CY} r={R_HUB - 2} fill="none" stroke="rgba(22,82,240,0.55)" strokeWidth="0.75" />
+          {/* P logo with glow */}
           <text
             x={CX} y={CY + 1}
             textAnchor="middle"
             dominantBaseline="middle"
-            fontSize={12}
+            fontSize={13}
             fontWeight="900"
             fill="#1652F0"
             fontFamily="Inter, system-ui, sans-serif"
+            filter="url(#hub-glow)"
           >
             P
           </text>
