@@ -31,7 +31,12 @@ const SEGMENT_TO_VISUAL_SLOT: Record<number, number> = {
 // The pointer sits at 12 o'clock (0°). targetAngle = centre of that visual slot.
 function computeLandingRotation(segmentIndex: number, currentRotation: number): number {
   const visualSlot  = SEGMENT_TO_VISUAL_SLOT[segmentIndex] ?? 0
-  const targetAngle = visualSlot * 36 + 18
+  // The SVG slot center is at (visualSlot * 36 + 18)° clockwise from top.
+  // CSS rotate(R°) is clockwise, so rotating by R brings the position at
+  // (360 - R) to the pointer.  To land slotCenter at the pointer we need
+  // R ≡ (360 - slotCenter) mod 360.
+  const slotCenter  = visualSlot * 36 + 18
+  const targetAngle = (360 - slotCenter + 360) % 360
   const normalised  = ((currentRotation % 360) + 360) % 360
   let delta = targetAngle - normalised
   if (delta <= 5) delta += 360          // always move forward
