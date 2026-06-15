@@ -11,6 +11,10 @@ export const XP_SOURCE_TYPES = [
   'badge',
   'mission',
   'admin_adjustment',
+  'spin',
+  'daily_streak',
+  'referral_bonus',
+  'referral_reward',
 ] as const;
 
 export type XPSourceType = typeof XP_SOURCE_TYPES[number];
@@ -133,4 +137,8 @@ export const XP_SOURCE_LABELS: Record<XPSourceType, string> = {
   badge:            'Badges',
   mission:          'Missions',
   admin_adjustment: 'Adjustments',
+  spin:             'Daily Spin',
+  daily_streak:     'Daily Streak',
+  referral_bonus:   'Referral Bonus',
+  referral_reward:  'Referral Reward',
 };

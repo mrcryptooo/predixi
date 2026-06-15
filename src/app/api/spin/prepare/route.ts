@@ -27,6 +27,7 @@ import {
   getSpinStatus,
   SPIN_EXPIRY_MINUTES,
 }                                         from '@/lib/spin'
+import { trackSpinEvent }                 from '@/lib/spin-analytics'
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status })
@@ -66,6 +67,14 @@ export async function POST(req: NextRequest) {
   // ── 4. Cooldown + daily-limit check ───────────────────────────────────────
   const status = await getSpinStatus(supabase, wallet)
   if (!status.canSpin) {
+    const eventName = status.reason === 'daily_limit_reached'
+      ? 'spin_daily_limit_block'
+      : 'spin_cooldown_block'
+    void trackSpinEvent(eventName, wallet, {
+      reason:         status.reason,
+      spinsRemaining: status.spinsRemaining,
+      nextSpinAt:     status.nextSpinAt,
+    })
     return NextResponse.json({
       success:        false,
       error:          status.reason === 'daily_limit_reached'
@@ -99,6 +108,12 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (existingPending) {
+    void trackSpinEvent('spin_prepare', wallet, {
+      spinId:         existingPending.id,
+      spinsRemaining: status.spinsRemaining,
+      nextSpinAt:     status.nextSpinAt,
+      isIdempotent:   true,
+    })
     return NextResponse.json({
       success:        true,
       spinId:         existingPending.id,
@@ -133,6 +148,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 7. Return session token (outcome is NOT revealed yet) ─────────────────
+  void trackSpinEvent('spin_prepare', wallet, {
+    spinId:         entry.id,
+    spinsRemaining: status.spinsRemaining,
+    nextSpinAt:     status.nextSpinAt,
+    isIdempotent:   false,
+  })
+
   return NextResponse.json({
     success:        true,
     spinId:         entry.id,

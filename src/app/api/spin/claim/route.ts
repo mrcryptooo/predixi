@@ -29,6 +29,7 @@ import { getServerSupabaseClient }                   from '@/lib/supabase/server
 import { basePublicClient }                          from '@/lib/auth/verify-base-wallet'
 import { computeRank }                               from '@/lib/ranks'
 import { updateLeaderboardXpForSpin, getSpinStatus } from '@/lib/spin'
+import { trackSpinEvent }                            from '@/lib/spin-analytics'
 
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/
 
@@ -73,6 +74,11 @@ export async function POST(req: NextRequest) {
   // claiming any could claim them back-to-back, bypassing the 8h cooldown.
   const claimStatus = await getSpinStatus(supabase, entry.wallet_address as string)
   if (!claimStatus.canSpin) {
+    const eventName = claimStatus.reason === 'daily_limit_reached'
+      ? 'spin_daily_limit_block' : 'spin_cooldown_block'
+    void trackSpinEvent(eventName, entry.wallet_address as string, {
+      spinId, reason: claimStatus.reason, nextSpinAt: claimStatus.nextSpinAt,
+    })
     return NextResponse.json({
       success:        false,
       error:          claimStatus.reason === 'daily_limit_reached'
@@ -138,7 +144,7 @@ export async function POST(req: NextRequest) {
     return err('Failed to claim spin', 500)
   }
   if (!claimed || claimed.length === 0) {
-    // Another concurrent request won the race
+    void trackSpinEvent('spin_duplicate_claim', entry.wallet_address as string, { spinId, txHash })
     return err('Spin already claimed', 409)
   }
 
@@ -189,8 +195,20 @@ export async function POST(req: NextRequest) {
     console.error('[spin/claim] leaderboard_stats errors:', lbResult.errors)
   }
 
-  // ── 12. Return outcome for animation ─────────────────────────────────────
-  const spinStatus = await getSpinStatus(supabase, entry.wallet_address as string)
+  // ── 12. Analytics ────────────────────────────────────────────────────────
+  const walletAddr = entry.wallet_address as string
+  void trackSpinEvent('spin_claim', walletAddr, { spinId, txHash })
+  void trackSpinEvent('spin_reward', walletAddr, {
+    spinId,
+    txHash,
+    xpAwarded,
+    segmentIndex: entry.segment_index,
+    newTotalXp:   newXp,
+    rank:         newRank,
+  })
+
+  // ── 13. Return outcome for animation ─────────────────────────────────────
+  const spinStatus = await getSpinStatus(supabase, walletAddr)
 
   return NextResponse.json({
     success:        true,
