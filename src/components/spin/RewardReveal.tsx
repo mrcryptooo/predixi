@@ -112,15 +112,18 @@ export function RewardReveal({ result, active, onDismiss }: RewardRevealProps) {
           {/* ── Reward card ──────────────────────────────────────────── */}
           <motion.div
             key="card"
-            className="fixed left-1/2 z-[61] w-full max-w-sm"
-            style={{
-              top:       '50%',
-              transform: 'translate(-50%, -50%)',
-              padding:   '0 16px',
-            }}
-            initial={{ scale: 0.7, y: 60, opacity: 0 }}
+            className="fixed inset-0 z-[61] flex items-center justify-center p-4 sm:p-6 pointer-events-none"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, delay: 0.08 }}
+          >
+          <motion.div
+            className="w-full max-w-sm pointer-events-auto"
+            initial={{ scale: 0.7, y: 50, opacity: 0 }}
             animate={{ scale: 1,   y: 0,  opacity: 1 }}
-            exit={{ scale: 0.8, y: 40, opacity: 0 }}
+            exit={{ scale: 0.85, y: 30, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 26, delay: 0.12 }}
           >
             <div
@@ -242,6 +245,7 @@ export function RewardReveal({ result, active, onDismiss }: RewardRevealProps) {
 
               </div>
             </div>
+          </motion.div>
           </motion.div>
         </>
       )}

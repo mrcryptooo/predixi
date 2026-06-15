@@ -87,7 +87,7 @@ export default function SpinPage() {
   }, [isConnected, address, phase, fetchStatus])
 
   const isSpinning = ['awaiting-tx','confirming-tx','claiming','animating'].includes(phase)
-  const isBusy     = isSpinning || ['signing','preparing','loading-status'].includes(phase)
+  const isBusy     = isSpinning || ['preparing','loading-status'].includes(phase)
   const showReveal = phase === 'complete' && !!result
 
   // Landed segment to highlight on wheel
@@ -103,7 +103,6 @@ export default function SpinPage() {
       case 'idle':
       case 'loading-status':   return { node: 'Loading…',                           enabled: false, glow: false }
       case 'ready':            return { node: 'SPIN',                                enabled: true,  glow: true,  pulse: true }
-      case 'signing':          return { node: <Spinner text="Sign in wallet…" />,    enabled: false, glow: false }
       case 'preparing':        return { node: <Spinner text="Preparing…" />,         enabled: false, glow: false }
       case 'awaiting-tx':      return { node: <Spinner text="Confirm in wallet…" />, enabled: false, glow: false }
       case 'confirming-tx':    return { node: <Spinner text="Confirming on Base…" />,enabled: false, glow: false }
@@ -133,29 +132,28 @@ export default function SpinPage() {
   }, [phase, triggerSpin, resetResult, fetchStatus])
 
   const phaseLabel =
-    phase === 'awaiting-tx'   ? 'Approve the transaction in your wallet' :
+    phase === 'awaiting-tx'   ? 'Confirm transaction in your wallet' :
     phase === 'confirming-tx' ? 'Waiting for Base confirmation…' :
-    phase === 'claiming'      ? 'Claiming reward…' :
-    phase === 'signing'       ? 'Check your wallet to sign' : null
+    phase === 'claiming'      ? 'Claiming reward…' : null
 
   // Suppress unused var warning
   void isBusy
 
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans overflow-x-hidden">
-      <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 pb-safe-nav">
+      <div className="max-w-xl mx-auto px-4 py-3 sm:py-8 pb-safe-nav">
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-3xl mb-8 glass-card-glow"
+          className="relative overflow-hidden rounded-3xl mb-4 glass-card-glow"
         >
           <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-primary/[0.06] blur-3xl pointer-events-none" />
           <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
 
-          <div className="relative z-10 p-5 sm:p-6 flex items-center justify-between gap-4">
+          <div className="relative z-10 p-4 sm:p-5 flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-11 h-11 rounded-2xl bg-primary/15 border border-primary/25 flex items-center justify-center flex-shrink-0">
                 <Sparkles size={20} className="text-primary" />
@@ -207,7 +205,7 @@ export default function SpinPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className="flex flex-col items-center gap-7"
+            className="flex flex-col items-center gap-4"
           >
             {/* Wheel ─────────────────────────────────────────────────────── */}
             <div className="relative flex items-center justify-center">
@@ -237,7 +235,7 @@ export default function SpinPage() {
               <SpinWheel
                 rotation={rotation}
                 landedSegmentIndex={landedSeg}
-                size={300}
+                size={268}
                 isSpinning={isSpinning}
               />
             </div>
@@ -334,7 +332,7 @@ export default function SpinPage() {
 
             {/* Disclaimer ─────────────────────────────────────────────────── */}
             <p className="text-center text-[10px] text-text-muted/50 max-w-[250px] leading-relaxed">
-              $1 · $5 · $10 are display-only. All rewards are XP.
+              $1 · $3 · $5 are display-only. All rewards are XP.
             </p>
           </motion.div>
         )}

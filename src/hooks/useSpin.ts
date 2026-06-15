@@ -1,10 +1,9 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { useAccount, usePublicClient, useSignMessage } from 'wagmi'
+import { useAccount, usePublicClient } from 'wagmi'
 import { useMotionValue, animate } from 'framer-motion'
 import type { AnimationPlaybackControls } from 'framer-motion'
-import { buildPredixiAuthMessage, generateNonce } from '@/lib/auth/wallet-signature'
 import { hashCommitment }            from '@/lib/onchain/commitment'
 import { normalizeCommitmentContext } from '@/lib/onchain/commitmentRegistry'
 import { useSubmitToBase }           from '@/hooks/useSubmitToBase'
@@ -13,8 +12,8 @@ import { spinAudio }                 from '@/lib/spin-audio'
 // ─── Wheel geometry ───────────────────────────────────────────────────────────
 //
 // 10 visual slots, 36° each, clockwise from 12 o'clock:
-//   Slot 0: 5 XP  | Slot 1: $1   | Slot 2: 100 XP | Slot 3: 15 XP | Slot 4: $5
-//   Slot 5: 250 XP | Slot 6: 10 XP | Slot 7: $10  | Slot 8: 50 XP | Slot 9: 25 XP
+//   Slot 0: 5 XP  | Slot 1: $1   | Slot 2: 100 XP | Slot 3: 15 XP | Slot 4: $3
+//   Slot 5: 250 XP | Slot 6: 10 XP | Slot 7: $5   | Slot 8: 50 XP | Slot 9: 25 XP
 //
 // Dollar slots (1, 4, 7) never appear in SEGMENT_TO_VISUAL_SLOT values — they
 // are cosmetic only and the server never returns segmentIndex 7/8/9.
@@ -45,7 +44,6 @@ export type SpinPhase =
   | 'idle'
   | 'loading-status'
   | 'ready'
-  | 'signing'
   | 'preparing'
   | 'awaiting-tx'
   | 'confirming-tx'
@@ -88,10 +86,9 @@ export type UseSpinReturn = {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSpin(): UseSpinReturn {
-  const { address }          = useAccount()
-  const publicClient         = usePublicClient({ chainId: 8453 })
-  const { signMessageAsync } = useSignMessage()
-  const { submitAsync }      = useSubmitToBase()
+  const { address }  = useAccount()
+  const publicClient = usePublicClient({ chainId: 8453 })
+  const { submitAsync } = useSubmitToBase()
 
   const rotation    = useMotionValue(0)
   const fastSpinRef = useRef<AnimationPlaybackControls | null>(null)
@@ -132,28 +129,13 @@ export function useSpin(): UseSpinReturn {
     spinAudio.resume()
 
     try {
-      // ── Phase: signing ─────────────────────────────────────────────────
-      setPhase('signing')
-      const nonce   = generateNonce()
-      const message = buildPredixiAuthMessage(address, 'spin_prepare', nonce)
-      let signature: string
-      try {
-        signature = await signMessageAsync({ message })
-      } catch {
-        setPhase('ready')
-        return
-      }
-
-      // ── Phase: preparing ───────────────────────────────────────────────
+      // ── Phase: preparing ──────────────────────────────────────────────
+      // Call prepare silently — no wallet popup, just a network request.
       setPhase('preparing')
       const prepRes = await fetch('/api/spin/prepare', {
         method:  'POST',
-        headers: {
-          'Content-Type':       'application/json',
-          'x-wallet-message':   encodeURIComponent(message),
-          'x-wallet-signature': signature,
-        },
-        body: JSON.stringify({ walletAddress: address }),
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ walletAddress: address }),
       })
       const prepData = await prepRes.json() as {
         success: boolean; spinId: string; error?: string
@@ -161,15 +143,9 @@ export function useSpin(): UseSpinReturn {
       if (!prepData.success) throw new Error(prepData.error ?? 'Failed to prepare spin')
       const { spinId } = prepData
 
-      // ── Phase 1-2: fast spin (awaiting tx) ─────────────────────────────
-      // Linear 100s animation — will be stopped when claim returns.
+      // ── Phase: awaiting-tx ────────────────────────────────────────────
+      // Transaction modal opens — this is the ONLY wallet interaction.
       setPhase('awaiting-tx')
-      fastSpinRef.current = animate(rotation, rotation.get() + 72_000, {
-        duration: 100,
-        ease:     'linear',
-      })
-
-      // ── Submit on-chain commitment ──────────────────────────────────────
       const commitmentHash = hashCommitment({
         type:          'spin',
         walletAddress: address.toLowerCase(),
@@ -180,8 +156,6 @@ export function useSpin(): UseSpinReturn {
       try {
         txHash = await submitAsync({ commitmentHash, context })
       } catch (txErr) {
-        fastSpinRef.current?.stop()
-        rotation.set(0)
         setPhase('ready')
         const msg = txErr instanceof Error ? txErr.message : ''
         if (!msg.toLowerCase().includes('rejected') && !msg.toLowerCase().includes('denied')) {
@@ -190,12 +164,19 @@ export function useSpin(): UseSpinReturn {
         return
       }
 
-      // ── Phase: confirming ──────────────────────────────────────────────
+      // ── Phase: confirming-tx ──────────────────────────────────────────
+      // Wait for on-chain receipt BEFORE starting the wheel.
       setPhase('confirming-tx')
       await publicClient.waitForTransactionReceipt({ hash: txHash })
 
-      // ── Phase: claiming ────────────────────────────────────────────────
+      // ── Phase: claiming — wheel starts AFTER tx confirmed ─────────────
       setPhase('claiming')
+      // Start fast spin now that tx is confirmed
+      fastSpinRef.current = animate(rotation, rotation.get() + 72_000, {
+        duration: 100,
+        ease:     'linear',
+      })
+
       const claimRes = await fetch('/api/spin/claim', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -221,13 +202,13 @@ export function useSpin(): UseSpinReturn {
 
       setPhase('animating')
 
-      // Phase 3 — Deceleration (with tick sounds at each segment crossing)
+      // Phase 3 — Natural deceleration with tick sounds
       let prevSeg = -1
       let elapsed = 0
-      const decelDuration = 2.8
-      await animate(rotation, landing - 20, {
+      const decelDuration = 3.2
+      await animate(rotation, landing - 30, {
         duration: decelDuration,
-        ease:     [0.14, 0.82, 0.38, 1],
+        ease:     [0.08, 0.82, 0.25, 1],
         onUpdate: (v) => {
           elapsed += 1 / 60
           const seg = Math.floor(((v % 360) + 360) % 360 / 36)
@@ -239,16 +220,22 @@ export function useSpin(): UseSpinReturn {
         },
       })
 
-      // Phase 4 — Overshoot (5° past target)
-      await animate(rotation, landing + 5, {
-        duration: 0.26,
-        ease:     [0.4, 0, 0.8, 1],
+      // Phase 4 — Overshoot (8° past target)
+      await animate(rotation, landing + 8, {
+        duration: 0.32,
+        ease:     [0.45, 0, 0.85, 1],
       })
 
-      // Phases 5-6 — Bounce-back spring to exact landing
-      await animate(rotation, landing, {
-        duration: 0.55,
+      // Phase 5 — Secondary micro-bounce
+      await animate(rotation, landing - 3, {
+        duration: 0.28,
         ease:     [0.34, 1.56, 0.64, 1],
+      })
+
+      // Phase 6 — Final elastic settle
+      await animate(rotation, landing, {
+        duration: 0.45,
+        ease:     [0.25, 1.5, 0.5, 1],
       })
 
       // Landing thud + reward chord
@@ -279,7 +266,7 @@ export function useSpin(): UseSpinReturn {
       setPhase('error')
       setError(err instanceof Error ? err.message : 'Something went wrong — please try again')
     }
-  }, [address, publicClient, signMessageAsync, submitAsync, rotation])
+  }, [address, publicClient, submitAsync, rotation])
 
   // ── Reset ────────────────────────────────────────────────────────────────
 

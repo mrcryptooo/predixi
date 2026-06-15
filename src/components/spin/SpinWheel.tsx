@@ -30,25 +30,26 @@ function outerArcPath(i: number): string {
 // ─── Segment definitions ──────────────────────────────────────────────────────
 
 // Visual slots 0-9, clockwise from 12 o'clock.
-// Dollar slots (1, 4, 7) are cosmetic — server never returns their segmentIndex.
+// Dollar slots (1, 4, 7) are cosmetic — server never returns their segmentIndex (7/8/9).
+// These are VISUAL ONLY and must never be selected by the server.
 
 const SLOTS = [
   // 0 — 5 XP
   { label: '5',   unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2a4a90', text: '#4d6abf', isDollar: false, segIdx: 0 },
-  // 1 — $1 (visual-only)
+  // 1 — $1 (visual-only — never included in reward selection)
   { label: '$1',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 7 },
   // 2 — 100 XP
   { label: '100', unit: 'XP', bg: '#071535', edge: '#1a3070', arcColor: '#1e50b8', text: '#4488f0', isDollar: false, segIdx: 5 },
   // 3 — 15 XP
   { label: '15',  unit: 'XP', bg: '#081228', edge: '#182850', arcColor: '#283c80', text: '#5272c0', isDollar: false, segIdx: 2 },
-  // 4 — $5 (visual-only)
-  { label: '$5',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 8 },
+  // 4 — $3 (visual-only — never included in reward selection)
+  { label: '$3',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 8 },
   // 5 — 250 XP (jackpot)
   { label: '250', unit: 'XP', bg: '#100840', edge: '#2a1068', arcColor: '#5028b8', text: '#8860e8', isDollar: false, segIdx: 6 },
   // 6 — 10 XP
   { label: '10',  unit: 'XP', bg: '#07102a', edge: '#182a55', arcColor: '#2040a0', text: '#587ae0', isDollar: false, segIdx: 1 },
-  // 7 — $10 (visual-only)
-  { label: '$10', unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 9 },
+  // 7 — $5 (visual-only — never included in reward selection)
+  { label: '$5',  unit: '',   bg: '#090909', edge: '#141414', arcColor: null,      text: '#2a2a35', isDollar: true,  segIdx: 9 },
   // 8 — 50 XP
   { label: '50',  unit: 'XP', bg: '#081430', edge: '#1a2e65', arcColor: '#1a4aa8', text: '#3878e8', isDollar: false, segIdx: 4 },
   // 9 — 25 XP
@@ -189,6 +190,20 @@ export function SpinWheel({
                 <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
+
+            {/* Text glow for XP labels */}
+            <filter id="xp-text-glow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+
+            {/* Hub logo clip */}
+            <clipPath id="hub-logo-clip">
+              <circle cx={CX} cy={CY} r={R_HUB - 5} />
+            </clipPath>
           </defs>
 
           {/* ── Dark base circle ──────────────────────────────────────── */}
@@ -261,55 +276,55 @@ export function SpinWheel({
             const tp        = polar(R_TEXT, mid)
             const isDollar  = slot.isDollar
             const isJackpot = slot.label === '250'
-            const labelSize = slot.label === '$10' ? 8.5
-              : slot.label.length >= 3 ? 10
-              : 13.5
+            const labelSize = isDollar ? (slot.label.length >= 3 ? 9 : 10.5)
+              : slot.label.length >= 3 ? 11.5
+              : 15
 
             return (
               <g key={i} transform={`rotate(${mid},${tp.x.toFixed(2)},${tp.y.toFixed(2)})`}>
                 <text
                   x={tp.x}
-                  y={isDollar ? tp.y + 1 : slot.unit ? tp.y - 4.5 : tp.y}
+                  y={isDollar ? tp.y + 1 : slot.unit ? tp.y - 5 : tp.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={labelSize}
-                  fontWeight={isDollar ? '500' : '800'}
-                  fill={isLanded ? '#ffffff' : slot.text}
+                  fontWeight={isDollar ? '500' : '900'}
+                  fill={isLanded ? '#ffffff' : isDollar ? slot.text : '#ffffff'}
                   fontFamily="Inter, system-ui, sans-serif"
-                  opacity={isDollar ? 0.38 : 1}
+                  opacity={isDollar ? 0.32 : isLanded ? 1 : 0.92}
                   letterSpacing={isJackpot ? '-0.03em' : '-0.01em'}
+                  filter={!isDollar ? 'url(#xp-text-glow)' : undefined}
                 >
                   {slot.label}
                 </text>
                 {slot.unit && (
                   <text
                     x={tp.x}
-                    y={tp.y + 7}
+                    y={tp.y + 8}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={6}
-                    fontWeight="700"
-                    fill={isLanded ? 'rgba(255,255,255,0.65)' : slot.text}
+                    fontSize={6.5}
+                    fontWeight="800"
+                    fill={isLanded ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.65)'}
                     fontFamily="Inter, system-ui, sans-serif"
-                    opacity={0.85}
-                    letterSpacing="0.07em"
+                    opacity={1}
+                    letterSpacing="0.08em"
+                    filter="url(#xp-text-glow)"
                   >
                     {slot.unit}
                   </text>
                 )}
-                {/* Dollar dots hint */}
+                {/* Lock icon — visual-only segment indicator */}
                 {isDollar && !isLanded && (
-                  <text
-                    x={tp.x}
-                    y={tp.y + 8}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize={4}
-                    fill="rgba(255,255,255,0.12)"
-                    fontFamily="Inter, system-ui, sans-serif"
-                  >
-                    ✦
-                  </text>
+                  <g transform={`translate(${tp.x - 4}, ${tp.y + 4})`} opacity="0.25">
+                    {/* lock body */}
+                    <rect x="0.5" y="3.5" width="7" height="5" rx="1"
+                      fill="rgba(255,255,255,0.5)" />
+                    {/* lock shackle */}
+                    <path d="M2 3.5 V2 a2 2 0 0 1 4 0 V3.5"
+                      fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"
+                      strokeLinecap="round" />
+                  </g>
                 )}
               </g>
             )
@@ -346,19 +361,18 @@ export function SpinWheel({
           <circle cx={CX} cy={CY} r={R_HUB - 2} fill="#050710" />
           {/* Inner accent ring */}
           <circle cx={CX} cy={CY} r={R_HUB - 2} fill="none" stroke="rgba(22,82,240,0.55)" strokeWidth="0.75" />
-          {/* P logo with glow */}
-          <text
-            x={CX} y={CY + 1}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize={13}
-            fontWeight="900"
-            fill="#1652F0"
-            fontFamily="Inter, system-ui, sans-serif"
+          {/* PrediXI logo — centered in hub */}
+          <image
+            href="/brand/predixi-logo.png"
+            x={CX - (R_HUB - 5)}
+            y={CY - (R_HUB - 5)}
+            width={(R_HUB - 5) * 2}
+            height={(R_HUB - 5) * 2}
+            preserveAspectRatio="xMidYMid meet"
+            clipPath="url(#hub-logo-clip)"
+            style={{ imageRendering: 'crisp-edges' } as React.CSSProperties}
             filter="url(#hub-glow)"
-          >
-            P
-          </text>
+          />
         </svg>
       </motion.div>
     </div>

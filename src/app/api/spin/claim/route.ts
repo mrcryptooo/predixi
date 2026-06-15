@@ -113,6 +113,11 @@ export async function POST(req: NextRequest) {
     return err('Transaction reverted on Base — only successful transactions are accepted', 422)
   }
 
+  // Verify the transaction was sent by the wallet that prepared the spin
+  if (receipt.from.toLowerCase() !== (entry.wallet_address as string).toLowerCase()) {
+    return err('Transaction sender does not match spin wallet', 422)
+  }
+
   // ── 6. Load profile ───────────────────────────────────────────────────────
   const { data: profile } = await supabase
     .from('profiles')

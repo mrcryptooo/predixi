@@ -21,7 +21,6 @@
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
-import { verifyBaseWalletAuth }           from '@/lib/auth/verify-base-wallet'
 import {
   selectSpinOutcome,
   getSpinStatus,
@@ -45,15 +44,9 @@ export async function POST(req: NextRequest) {
 
   const wallet = walletAddress.toLowerCase()
 
-  // ── 2. Wallet signature auth ───────────────────────────────────────────────
-  const auth = await verifyBaseWalletAuth(req, wallet, 'spin_prepare')
-  if (!auth.verified) {
-    return err('Unauthorized', 401)
-  }
-
   const supabase = getServerSupabaseClient()
 
-  // ── 3. Resolve profile ────────────────────────────────────────────────────
+  // ── 2. Resolve profile ────────────────────────────────────────────────────
   const { data: profile } = await supabase
     .from('profiles')
     .select('id')
@@ -64,7 +57,7 @@ export async function POST(req: NextRequest) {
     return err('Profile not found — connect your wallet first', 404)
   }
 
-  // ── 4. Cooldown + daily-limit check ───────────────────────────────────────
+  // ── 3. Cooldown + daily-limit check ───────────────────────────────────────
   const status = await getSpinStatus(supabase, wallet)
   if (!status.canSpin) {
     const eventName = status.reason === 'daily_limit_reached'
@@ -86,7 +79,7 @@ export async function POST(req: NextRequest) {
     }, { status: 429 })
   }
 
-  // ── 5. Idempotent pending spin — return existing rather than stacking ────
+  // ── 4. Idempotent pending spin — return existing rather than stacking ────
   // Expire stale pending entries first, then check for a live one.
   // If a non-expired pending spin already exists for this wallet, return it
   // rather than creating a second one.  This closes the race where two quick
@@ -123,7 +116,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // ── 6. Pre-determine outcome (server-side, before animation) ──────────────
+  // ── 5. Pre-determine outcome (server-side, before animation) ──────────────
   const outcome   = selectSpinOutcome()
   const expiresAt = new Date(
     Date.now() + SPIN_EXPIRY_MINUTES * 60 * 1000,
@@ -147,7 +140,7 @@ export async function POST(req: NextRequest) {
     return err('Failed to prepare spin — please try again', 500)
   }
 
-  // ── 7. Return session token (outcome is NOT revealed yet) ─────────────────
+  // ── 6. Return session token (outcome is NOT revealed yet) ─────────────────
   void trackSpinEvent('spin_prepare', wallet, {
     spinId:         entry.id,
     spinsRemaining: status.spinsRemaining,
