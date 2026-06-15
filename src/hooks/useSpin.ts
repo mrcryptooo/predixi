@@ -202,15 +202,17 @@ export function useSpin(): UseSpinReturn {
 
       setPhase('animating')
 
-      // Phase 3 — Natural deceleration with tick sounds
-      let prevSeg = -1
-      let elapsed = 0
-      const decelDuration = 3.2
-      await animate(rotation, landing - 30, {
+      // Phase 3 — Long natural deceleration; overshoots 14° past target so
+      // the next phase feels like a pull-back rather than a sudden direction change.
+      let prevSeg    = -1
+      let startTime  = 0
+      const decelDuration = 3.6
+      await animate(rotation, landing + 14, {
         duration: decelDuration,
-        ease:     [0.08, 0.82, 0.25, 1],
+        ease:     [0.05, 0.85, 0.18, 1],
         onUpdate: (v) => {
-          elapsed += 1 / 60
+          if (!startTime) startTime = performance.now()
+          const elapsed = (performance.now() - startTime) / 1000
           const seg = Math.floor(((v % 360) + 360) % 360 / 36)
           if (seg !== prevSeg) {
             prevSeg = seg
@@ -220,22 +222,22 @@ export function useSpin(): UseSpinReturn {
         },
       })
 
-      // Phase 4 — Overshoot (8° past target)
-      await animate(rotation, landing + 8, {
-        duration: 0.32,
-        ease:     [0.45, 0, 0.85, 1],
+      // Phase 4 — Ease back past center (pull momentum reverses)
+      await animate(rotation, landing - 5, {
+        duration: 0.38,
+        ease:     [0.42, 0, 0.58, 1],
       })
 
-      // Phase 5 — Secondary micro-bounce
-      await animate(rotation, landing - 3, {
-        duration: 0.28,
-        ease:     [0.34, 1.56, 0.64, 1],
+      // Phase 5 — Elastic spring to final position
+      await animate(rotation, landing + 2, {
+        duration: 0.30,
+        ease:     [0.34, 1.9, 0.64, 1],
       })
 
-      // Phase 6 — Final elastic settle
+      // Phase 6 — Final micro-settle
       await animate(rotation, landing, {
-        duration: 0.45,
-        ease:     [0.25, 1.5, 0.5, 1],
+        duration: 0.22,
+        ease:     [0.25, 0, 0.5, 1],
       })
 
       // Landing thud + reward chord

@@ -192,8 +192,8 @@ export function SpinWheel({
             </filter>
 
             {/* Text glow for XP labels */}
-            <filter id="xp-text-glow" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur" />
+            <filter id="xp-text-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -276,9 +276,9 @@ export function SpinWheel({
             const tp        = polar(R_TEXT, mid)
             const isDollar  = slot.isDollar
             const isJackpot = slot.label === '250'
-            const labelSize = isDollar ? (slot.label.length >= 3 ? 9 : 10.5)
-              : slot.label.length >= 3 ? 11.5
-              : 15
+            const labelSize = isDollar ? (slot.label.length >= 3 ? 9.5 : 11)
+              : slot.label.length >= 3 ? 14
+              : 18
 
             return (
               <g key={i} transform={`rotate(${mid},${tp.x.toFixed(2)},${tp.y.toFixed(2)})`}>
@@ -288,10 +288,10 @@ export function SpinWheel({
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={labelSize}
-                  fontWeight={isDollar ? '500' : '900'}
-                  fill={isLanded ? '#ffffff' : isDollar ? slot.text : '#ffffff'}
+                  fontWeight={isDollar ? '600' : '900'}
+                  fill={isLanded ? '#ffffff' : isDollar ? 'rgba(255,255,255,0.70)' : '#ffffff'}
                   fontFamily="Inter, system-ui, sans-serif"
-                  opacity={isDollar ? 0.32 : isLanded ? 1 : 0.92}
+                  opacity={1}
                   letterSpacing={isJackpot ? '-0.03em' : '-0.01em'}
                   filter={!isDollar ? 'url(#xp-text-glow)' : undefined}
                 >
@@ -303,26 +303,26 @@ export function SpinWheel({
                     y={tp.y + 8}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={6.5}
-                    fontWeight="800"
-                    fill={isLanded ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.65)'}
+                    fontSize={8}
+                    fontWeight="900"
+                    fill={isLanded ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.75)'}
                     fontFamily="Inter, system-ui, sans-serif"
                     opacity={1}
-                    letterSpacing="0.08em"
+                    letterSpacing="0.1em"
                     filter="url(#xp-text-glow)"
                   >
                     {slot.unit}
                   </text>
                 )}
-                {/* Lock icon — visual-only segment indicator */}
+                {/* Lock icon — visual-only segment, never included in reward selection */}
                 {isDollar && !isLanded && (
-                  <g transform={`translate(${tp.x - 4}, ${tp.y + 4})`} opacity="0.25">
+                  <g transform={`translate(${tp.x - 5}, ${tp.y + 5})`} opacity="0.65">
                     {/* lock body */}
-                    <rect x="0.5" y="3.5" width="7" height="5" rx="1"
-                      fill="rgba(255,255,255,0.5)" />
+                    <rect x="0.5" y="4" width="9" height="6.5" rx="1.5"
+                      fill="rgba(255,255,255,0.55)" />
                     {/* lock shackle */}
-                    <path d="M2 3.5 V2 a2 2 0 0 1 4 0 V3.5"
-                      fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"
+                    <path d="M2.5 4 V2.2 a2.5 2.5 0 0 1 5 0 V4"
+                      fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.4"
                       strokeLinecap="round" />
                   </g>
                 )}
