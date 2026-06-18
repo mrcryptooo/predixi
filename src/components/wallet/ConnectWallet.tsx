@@ -6,12 +6,7 @@ import { Wallet, ChevronDown, LogOut, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { truncateAddress } from '@/lib/address'
 import { isBaseApp, markIntentionalDisconnect, clearIntentionalDisconnect } from '@/lib/base-app'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ConnectWallet
-// Props:
-//   compact — smaller variant for the mobile header
-// ─────────────────────────────────────────────────────────────────────────────
+import { WalletModal } from './WalletModal'
 
 interface ConnectWalletProps {
   compact?: boolean
@@ -23,12 +18,10 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
   const { connect, connectors, isPending } = useConnect()
   const { disconnect } = useDisconnect()
 
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [copied,       setCopied]       = useState(false)
-  // mounted prevents a hydration mismatch: server always renders "disconnected",
-  // but the client may reconnect immediately from wagmi storage.  Rendering a
-  // neutral placeholder until after mount eliminates the flash.
-  const [mounted,      setMounted]      = useState(false)
+  const [dropdownOpen,   setDropdownOpen]   = useState(false)
+  const [copied,         setCopied]         = useState(false)
+  const [walletModalOpen, setWalletModalOpen] = useState(false)
+  const [mounted,        setMounted]        = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { setMounted(true) }, [])
@@ -46,7 +39,6 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
     }
   }, [dropdownOpen])
 
-  // ── Copy address ────────────────────────────────────────────────────────────
   function handleCopy() {
     if (!address) return
     navigator.clipboard.writeText(address).then(() => {
@@ -55,19 +47,19 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
     })
   }
 
-  // ── Connect — prefer baseAccount, fall back to injected ─────────────────────
   function handleConnect() {
-    // Clear intentional-disconnect flag so auto-reconnect resumes after this session
-    clearIntentionalDisconnect()
-    const preferred =
-      connectors.find((c) => c.id === 'baseAccount') ??
-      connectors.find((c) => c.id === 'injected') ??
-      connectors[0]
-    if (preferred) connect({ connector: preferred })
+    if (isBaseApp()) {
+      clearIntentionalDisconnect()
+      const preferred =
+        connectors.find((c) => c.id === 'baseAccount') ??
+        connectors.find((c) => c.id === 'injected') ??
+        connectors[0]
+      if (preferred) connect({ connector: preferred })
+    } else {
+      setWalletModalOpen(true)
+    }
   }
 
-  // ── Pre-mount placeholder — avoids hydration mismatch ──────────────────────
-  // Render a same-size neutral skeleton until wagmi has hydrated on the client.
   if (!mounted) {
     return (
       <div className={cn(
@@ -78,33 +70,35 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
     )
   }
 
-  // ── Disconnected state ───────────────────────────────────────────────────────
   if (!isConnected) {
     return (
-      <button
-        onClick={handleConnect}
-        disabled={isPending}
-        className={cn(
-          'relative flex items-center gap-2 rounded-xl font-semibold transition-all duration-150',
-          'bg-primary text-white border border-primary/60',
-          'hover:bg-primary/90 hover:shadow-[0_0_16px_rgba(22,82,240,0.35)]',
-          'active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed',
-          compact
-            ? 'text-[11px] px-2.5 py-1.5'
-            : 'text-sm px-4 py-2.5',
-          className
-        )}
-      >
-        <Wallet size={compact ? 13 : 15} strokeWidth={2.2} className="flex-shrink-0" />
-        {isPending
-          ? 'Connecting…'
-          : compact
-            ? 'Connect'
-            : isBaseApp()
-              ? 'Connect via Base'
-              : 'Connect Wallet'
-        }
-      </button>
+      <>
+        <button
+          onClick={handleConnect}
+          disabled={isPending}
+          className={cn(
+            'relative flex items-center gap-2 rounded-xl font-semibold transition-all duration-150',
+            'bg-primary text-white border border-primary/60',
+            'hover:bg-primary/90 hover:shadow-[0_0_16px_rgba(22,82,240,0.35)]',
+            'active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed',
+            compact
+              ? 'text-[11px] px-2.5 py-1.5'
+              : 'text-sm px-4 py-2.5',
+            className
+          )}
+        >
+          <Wallet size={compact ? 13 : 15} strokeWidth={2.2} className="flex-shrink-0" />
+          {isPending
+            ? 'Connecting…'
+            : compact
+              ? 'Connect'
+              : isBaseApp()
+                ? 'Connect via Base'
+                : 'Connect Wallet'
+          }
+        </button>
+        <WalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} />
+      </>
     )
   }
 
