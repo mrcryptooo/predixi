@@ -15,6 +15,7 @@ import {
   normalizeCommitmentContext,
   validateCommitmentConfig,
 } from '@/lib/onchain/commitmentRegistry'
+import { getBuilderDataSuffix } from '@/config/attribution'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -133,6 +134,7 @@ export function useSubmitToBase(): UseSubmitToBaseResult {
         functionName: 'submitCommitment',
         args:         [commitmentHash as `0x${string}`, safeContext],
         chainId:      PREDIXI_BASE_CHAIN_ID,
+        dataSuffix:   getBuilderDataSuffix(),
       })
 
       // Store for reactive watchers (isPending, isConfirming, isConfirmed)

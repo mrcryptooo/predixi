@@ -34,6 +34,7 @@ import {
   isBytes32Nonce,
 } from '@/lib/onchain/predixiBadges'
 import { getTokenIdForBadge, isActiveBadgeTokenId } from '@/lib/badges/tokenIds'
+import { getBuilderDataSuffix } from '@/config/attribution'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -253,7 +254,8 @@ export function useMintBadge(): UseMintBadgeResult {
             apiData.nonce     as `0x${string}`,
             apiData.signature as `0x${string}`,
           ],
-          chainId: PREDIXI_BASE_CHAIN_ID as 8453,
+          chainId:    PREDIXI_BASE_CHAIN_ID as 8453,
+          dataSuffix: getBuilderDataSuffix(),
         })
       })
       .catch((err: unknown) => {
