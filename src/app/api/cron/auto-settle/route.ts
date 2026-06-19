@@ -21,7 +21,7 @@ import { getServerSupabaseClient }        from '@/lib/supabase/server'
 import { findQualifiedMatches, runAutoSettle } from '@/lib/auto-settle'
 import { logCronRun }                     from '@/lib/cron/logCronRun'
 
-const CRON_LIMIT  = 25
+const CRON_LIMIT  = 100
 const CRON_ROUTE  = '/api/cron/auto-settle'
 
 function err(message: string, status: number) {

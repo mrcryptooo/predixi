@@ -74,7 +74,7 @@ export async function findQualifiedMatches(
     .eq('status', 'finished')
     .not('home_score', 'is', null)
     .not('away_score', 'is', null)
-    .order('kickoff', { ascending: true })
+    .order('kickoff', { ascending: false })
     .limit(limit)
 
   if (matchErr) {
