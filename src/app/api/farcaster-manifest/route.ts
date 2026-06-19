@@ -15,7 +15,7 @@
 
 import { NextResponse } from 'next/server'
 
-const APP_URL = 'https://predixi-base.vercel.app'
+const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://predixi.xyz'
 
 export async function GET() {
   const header    = process.env.FARCASTER_HEADER    ?? ''

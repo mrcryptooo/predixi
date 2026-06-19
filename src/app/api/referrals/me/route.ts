@@ -16,7 +16,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }         from '@/lib/supabase/server'
 
-const BASE_URL = 'https://predixi-base.vercel.app'
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://predixi.xyz'
 
 function isValidAddress(addr: unknown): addr is string {
   return typeof addr === 'string' && /^0x[0-9a-fA-F]{40}$/i.test(addr.trim())

@@ -183,7 +183,7 @@ export default function OGImage() {
             letterSpacing: '2px',
           }}
         >
-          predixi-base.vercel.app
+          predixi.xyz
         </div>
       </div>
     ),

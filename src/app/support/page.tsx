@@ -25,7 +25,7 @@ export default function SupportPage() {
             <div>
               <h1 className="text-2xl font-black text-white tracking-tight">Support</h1>
               <p className="text-xs text-white/35 font-mono mt-0.5">
-                PrediXI Beta · <a href="https://predixi-base.vercel.app" className="text-primary/60 hover:text-primary transition-colors">predixi-base.vercel.app</a>
+                PrediXI Beta · <a href="https://predixi.xyz" className="text-primary/60 hover:text-primary transition-colors">predixi.xyz</a>
               </p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function SupportPage() {
           <div className="flex flex-wrap gap-3">
             <LegalLink href="/privacy" label="Privacy Policy" />
             <LegalLink href="/terms" label="Terms of Use" />
-            <LegalLink href="https://predixi-base.vercel.app" label="App" external />
+            <LegalLink href="https://predixi.xyz" label="App" external />
           </div>
         </div>
 

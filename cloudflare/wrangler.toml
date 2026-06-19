@@ -17,7 +17,7 @@ compatibility_date = "2024-09-23"
 
 [vars]
 # Production app URL — change if you ever move to a custom domain
-APP_URL = "https://predixi-base.vercel.app"
+APP_URL = "https://predixi.xyz"
 
 # Cron triggers:
 #   every-3-minutes  — sync WC results (also triggers inline settlement via after())

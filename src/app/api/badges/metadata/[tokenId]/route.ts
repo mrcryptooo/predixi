@@ -44,7 +44,7 @@ import {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PRODUCTION_BASE_URL = 'https://predixi-base.vercel.app'
+const PRODUCTION_BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://predixi.xyz'
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=3600, s-maxage=86400',

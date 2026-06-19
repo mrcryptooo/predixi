@@ -8,7 +8,7 @@
 
 const PREDIXI_BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ??
-  'https://predixi-base.vercel.app'
+  'https://predixi.xyz'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Share support detection

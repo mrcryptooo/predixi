@@ -16,21 +16,21 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://predixi.xyz'
+
 export const metadata: Metadata = {
   title: "PrediXI — Web3 Football Prediction Platform",
   description:
-    "Predict football match outcomes, earn rewards, and compete on-chain. Built for Base App.",
-  keywords: ["football", "prediction", "web3", "Base", "crypto", "blockchain", "earn"],
+    "Predict football match outcomes, track your accuracy on-chain, and climb the leaderboard. Built on Base.",
+  keywords: ["football", "prediction", "web3", "Base", "onchain", "blockchain"],
 
   // ── Open Graph ────────────────────────────────────────────────────────────
-  // opengraph-image.tsx auto-generates the og:image tag.
-  // Explicit metadata here covers title/description/siteName only.
   openGraph: {
     type:        "website",
-    url:         "https://predixi-base.vercel.app",
+    url:         SITE_URL,
     siteName:    "PrediXI",
     title:       "PrediXI — Web3 Football Prediction Platform",
-    description: "Predict football match outcomes, earn XP, and compete on-chain. Built for Base App.",
+    description: "Predict football match outcomes, track your accuracy on-chain, and climb the leaderboard. Built on Base.",
   },
 
   // ── Twitter / X ───────────────────────────────────────────────────────────
@@ -38,23 +38,21 @@ export const metadata: Metadata = {
     card:        "summary_large_image",
     site:        "@predixi_app",
     title:       "PrediXI — Web3 Football Prediction Platform",
-    description: "Predict football match outcomes, earn XP, and compete on-chain. Built for Base App.",
+    description: "Predict football match outcomes, track your accuracy on-chain, and climb the leaderboard. Built on Base.",
   },
 
   // ── Base Mini App / Farcaster frame embed ────────────────────────────────
-  // fc:frame embeds Mini App metadata for discovery via link unfurling in
-  // Warpcast / Base App. Matches the frame config in /.well-known/farcaster.json.
   other: {
     "fc:frame": JSON.stringify({
       version:  'next',
-      imageUrl: 'https://predixi-base.vercel.app/opengraph-image',
+      imageUrl: `${SITE_URL}/opengraph-image`,
       button: {
         title:  'Play PrediXI',
         action: {
           type:                  'launch_frame',
           name:                  'PrediXI',
-          url:                   'https://predixi-base.vercel.app',
-          splashImageUrl:        'https://predixi-base.vercel.app/splash',
+          url:                   SITE_URL,
+          splashImageUrl:        `${SITE_URL}/splash`,
           splashBackgroundColor: '#07080F',
         },
       },

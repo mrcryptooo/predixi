@@ -37,7 +37,7 @@ export function ReferralCard({ walletAddress }: { walletAddress?: string }) {
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
-        : "https://predixi-base.vercel.app";
+        : "https://predixi.xyz";
     return `${origin}/?ref=${code}`;
   }
 
