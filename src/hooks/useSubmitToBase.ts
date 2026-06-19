@@ -6,6 +6,7 @@ import {
   useWaitForTransactionReceipt,
   useChainId,
   useAccount,
+  useSwitchChain,
 } from 'wagmi'
 import {
   PREDIXI_COMMITMENT_CONTRACT,
@@ -76,6 +77,7 @@ export interface UseSubmitToBaseResult {
 export function useSubmitToBase(): UseSubmitToBaseResult {
   const chainId         = useChainId()
   const { isConnected } = useAccount()
+  const { switchChainAsync } = useSwitchChain()
 
   // Track the tx hash so useWaitForTransactionReceipt can watch it
   const [pendingTxHash, setPendingTxHash] = useState<`0x${string}` | undefined>()
@@ -115,7 +117,11 @@ export function useSubmitToBase(): UseSubmitToBaseResult {
         throw new Error('[useSubmitToBase] No wallet connected')
       }
       if (chainId !== PREDIXI_BASE_CHAIN_ID) {
-        throw new Error(`[useSubmitToBase] Wrong chain ${chainId} — Base Mainnet (8453) required`)
+        try {
+          await switchChainAsync({ chainId: PREDIXI_BASE_CHAIN_ID as 8453 })
+        } catch {
+          throw new Error(`[useSubmitToBase] Wrong chain ${chainId} — switch to Base Mainnet was rejected`)
+        }
       }
       if (!isBytes32Hash(commitmentHash)) {
         throw new Error('[useSubmitToBase] Invalid bytes32 commitmentHash')
@@ -133,7 +139,7 @@ export function useSubmitToBase(): UseSubmitToBaseResult {
         abi:          COMMITMENT_REGISTRY_ABI,
         functionName: 'submitCommitment',
         args:         [commitmentHash as `0x${string}`, safeContext],
-        chainId:      PREDIXI_BASE_CHAIN_ID,
+        chainId:      PREDIXI_BASE_CHAIN_ID as 8453,
         dataSuffix:   getBuilderDataSuffix(),
       })
 
@@ -141,7 +147,7 @@ export function useSubmitToBase(): UseSubmitToBaseResult {
       setPendingTxHash(txHash)
       return txHash
     },
-    [writeContractAsync, isConnected, chainId],
+    [writeContractAsync, isConnected, chainId, switchChainAsync],
   )
 
   return {

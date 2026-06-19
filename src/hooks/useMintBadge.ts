@@ -25,6 +25,7 @@ import {
   useChainId,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useSwitchChain,
 } from 'wagmi'
 import {
   PREDIXI_BADGE_CONTRACT,
@@ -74,6 +75,7 @@ export interface UseMintBadgeResult {
 export function useMintBadge(): UseMintBadgeResult {
   const chainId                  = useChainId()
   const { address, isConnected } = useAccount()
+  const { switchChainAsync }     = useSwitchChain()
 
   // ── Phase state — phaseRef prevents stale closures in async callbacks ───────
   const phaseRef = useRef<MintPhase>('idle')
@@ -193,14 +195,21 @@ export function useMintBadge(): UseMintBadgeResult {
     const configCheck = validateBadgeContractConfig()
     if (!configCheck.ok) { setErrorMsg(configCheck.error); return }
     if (!isConnected)    { setErrorMsg('Wallet not connected'); return }
-    if (chainId !== PREDIXI_BASE_CHAIN_ID) {
-      setErrorMsg('Please switch to Base Mainnet')
-      return
-    }
     const tokenId = getTokenIdForBadge(badgeId)
     if (tokenId === undefined || !isActiveBadgeTokenId(tokenId)) {
       setErrorMsg(`Unknown badge: ${badgeId}`)
       return
+    }
+
+    // Attempt chain switch if needed before starting the mint flow
+    ;(async () => {
+    if (chainId !== PREDIXI_BASE_CHAIN_ID) {
+      try {
+        await switchChainAsync({ chainId: PREDIXI_BASE_CHAIN_ID as 8453 })
+      } catch {
+        setErrorMsg('Please switch to Base Mainnet')
+        return
+      }
     }
 
     // Reset all state for a fresh attempt
@@ -264,7 +273,8 @@ export function useMintBadge(): UseMintBadgeResult {
         setErrorMsg(msg)
         setPhase('idle')
       })
-  }, [address, isConnected, chainId, writeContract, resetWrite, callPatch])
+    })()
+  }, [address, isConnected, chainId, writeContract, resetWrite, callPatch, switchChainAsync])
 
   // ── Reset ─────────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {

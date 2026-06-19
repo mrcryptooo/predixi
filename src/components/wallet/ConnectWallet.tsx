@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { base } from 'wagmi/chains'
 import { Wallet, ChevronDown, LogOut, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { truncateAddress } from '@/lib/address'
@@ -54,7 +55,7 @@ export function ConnectWallet({ compact = false, className }: ConnectWalletProps
         connectors.find((c) => c.id === 'baseAccount') ??
         connectors.find((c) => c.id === 'injected') ??
         connectors[0]
-      if (preferred) connect({ connector: preferred })
+      if (preferred) connect({ connector: preferred, chainId: base.id })
     } else {
       setWalletModalOpen(true)
     }

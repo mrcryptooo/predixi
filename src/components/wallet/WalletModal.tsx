@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Wallet, Globe } from 'lucide-react'
 import { useConnect } from 'wagmi'
+import { base } from 'wagmi/chains'
 import { cn } from '@/lib/utils'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import { clearIntentionalDisconnect } from '@/lib/base-app'
@@ -90,7 +91,7 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
 
   function handleSelect(connector: Connector) {
     clearIntentionalDisconnect()
-    connect({ connector }, { onSuccess: () => onClose() })
+    connect({ connector, chainId: base.id }, { onSuccess: () => onClose() })
   }
 
   return (
