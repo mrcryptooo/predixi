@@ -59,15 +59,19 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServerSupabaseClient()
 
-  // ── 2. Resolve profile ────────────────────────────────────────────────────
-  const { data: profile } = await supabase
+  // ── 2. Resolve or create profile ────────────────────────────────────────
+  const { data: profile, error: profileErr } = await supabase
     .from('profiles')
+    .upsert(
+      { wallet_address: wallet },
+      { onConflict: 'wallet_address' },
+    )
     .select('id')
-    .eq('wallet_address', wallet)
-    .maybeSingle()
+    .single()
 
-  if (!profile) {
-    return err('Profile not found — connect your wallet first', 404)
+  if (profileErr || !profile) {
+    console.error('[spin/prepare] profile upsert:', profileErr)
+    return err('Failed to create or fetch profile', 500)
   }
 
   // ── 3. Cooldown + daily-limit check ───────────────────────────────────────
