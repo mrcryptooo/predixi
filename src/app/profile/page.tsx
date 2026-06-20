@@ -67,12 +67,15 @@ type ApiProfile = {
 };
 
 type ApiPrediction = {
-  id:            string;
-  matchId:       string;
-  outcome:       "H" | "D" | "A";
-  placedAt:      string;
-  pointsAwarded: number | null;
-  isCorrect:     boolean | null;
+  id:               string;
+  matchId:          string;
+  outcome:          "H" | "D" | "A";
+  placedAt:         string;
+  pointsAwarded:    number | null;
+  isCorrect:        boolean | null;
+  commitmentHash?:  string | null;
+  submittedOnchain?: boolean;
+  txHash?:          string | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,6 +111,9 @@ function toHistoryEntry(p: ApiPrediction, metaMap: Record<string, MatchMeta>): P
     awayCrest:  meta?.awayCrest ?? null,
     homeShort,
     awayShort,
+    commitmentHash:   p.commitmentHash ?? null,
+    submittedOnchain: p.submittedOnchain ?? false,
+    txHash:           p.txHash ?? null,
   };
 }
 
@@ -364,7 +370,7 @@ const futureItems = [
   {
     icon:  <Zap size={15} className="text-primary flex-shrink-0 mt-0.5" />,
     title: "Builder Code attribution",
-    desc:  "Builder Code-ready transactions come later. PrediXI is registered on Base.dev as a Standard Web App.",
+    desc:  "Every PrediXI transaction carries ERC-8021 Builder attribution. PrediXI is registered on Base.dev.",
   },
 ];
 
