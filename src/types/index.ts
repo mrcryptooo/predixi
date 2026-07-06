@@ -170,3 +170,61 @@ export type PredictionRecord = {
   outcome: MatchOutcome;
   placedAt: string;       // ISO timestamp
 };
+
+// ── Knockout Bracket ──────────────────────────────────────────────────────────
+
+/** Canonical knockout round keys, in progression order. */
+export type KnockoutRoundKey = "r32" | "r16" | "qf" | "sf" | "final" | "third";
+
+/** Minimal team shape used inside bracket match nodes. */
+export type BracketTeam = {
+  id: string;
+  name: string;
+  shortName: string;
+  crest: string | null;
+};
+
+/** A single match node in the knockout bracket. */
+export type BracketMatch = {
+  /** Supabase match ID for a real fixture, or a synthetic "projected-..." id
+   *  when the match doesn't exist in API-Football yet (see `projected`). */
+  id: string;
+  homeTeam: BracketTeam | null;   // null = slot not yet filled (TBD)
+  awayTeam: BracketTeam | null;
+  kickoffTime: string | null;
+  status: string;                  // "upcoming" | "live" | "finished" | "projected" | ...
+  homeScore: number | null;
+  awayScore: number | null;
+  actualOutcome: "H" | "D" | "A" | null;
+  round: KnockoutRoundKey;
+  /** 0-based index within the round, determines bracket position */
+  slotIndex: number;
+  /** The id of the winning BracketTeam, or null when not yet decided */
+  winnerId: string | null;
+  /** True when this slot has no real API-Football fixture yet — team names
+   *  (if any) are derived from completed feeder-round results client-side.
+   *  Not linkable to /matches/[id]; no real match exists. */
+  projected: boolean;
+};
+
+/** Bracket progression stage — drives which tab/view auto-selects. */
+export type BracketStage =
+  | "pre_knockout"   // group stage still ongoing / not started
+  | "r32"
+  | "r16"
+  | "qf"
+  | "sf"
+  | "final"
+  | "complete";
+
+/** Full bracket payload returned by /api/wc-bracket */
+export type BracketData = {
+  r32:   BracketMatch[];   // up to 16 matches
+  r16:   BracketMatch[];   // up to 8 matches
+  qf:    BracketMatch[];   // up to 4 matches
+  sf:    BracketMatch[];   // up to 2 matches
+  final: BracketMatch[];   // 1 match
+  third: BracketMatch[];   // 1 match (3rd place)
+  stage: BracketStage;
+  totalKnockoutMatches: number;
+};

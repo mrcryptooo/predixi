@@ -68,7 +68,10 @@ export default function MatchesPage() {
   const { getPrediction } = usePredictionStore();
 
   useEffect(() => {
-    fetch("/api/matches?source=apf&limit=100")
+    // source omitted (defaults to "all") — WC 2026 fixtures are now synced via
+    // football-data.org (fd-*) since API-Football's free plan cannot access
+    // this season; /api/matches dedupes any provider-duplicate WC rows itself.
+    fetch("/api/matches?limit=100")
       .then(r => r.ok ? r.json() : null)
       .then((data: { success: boolean; matches: Record<string, unknown>[] } | null) => {
         if (data?.success && data.matches.length > 0) {

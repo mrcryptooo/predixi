@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Trophy, Info, Shield, Zap, Link2, FileText } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Trophy, Info, Shield, Zap, Link2, FileText, Layers, ListOrdered, Swords } from "lucide-react";
 import { worldCupGroups } from "@/data/worldcup";
 import { cn } from "@/lib/utils";
 import { CountdownTimer } from "@/components/world-cup/CountdownTimer";
 import { WorldCupFixtureCard } from "@/components/world-cup/WorldCupFixtureCard";
 import { WorldCupPredictionCard } from "@/components/world-cup/WorldCupPredictionCard";
 import { TeamLogo } from "@/components/ui/TeamLogo";
+import { KnockoutBracket } from "@/components/world-cup/KnockoutBracket";
 import type { SpecialPrediction, SelectionOption } from "@/components/world-cup/WorldCupPredictionCard";
+import type { BracketData } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flag image sources — flagcdn.com SVGs for all 48 WC nations
@@ -418,11 +420,34 @@ function toPlayerOption(p: ApiPlayer): SelectionOption {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Top-level tabs — Group Stage / Knockout Stage / Standings
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WcTab = "group" | "knockout" | "standings";
+
+const WC_TABS: { id: WcTab; label: string; icon: typeof Layers }[] = [
+  { id: "group",     label: "Group Stage",    icon: Layers      },
+  { id: "knockout",  label: "Knockout Stage", icon: Swords      },
+  { id: "standings", label: "Standings",      icon: ListOrdered },
+];
+
 export default function WorldCupPage() {
   const [wcMatches,    setWcMatches]    = useState<RealMatch[]>([]);
   const [dataSource,   setDataSource]   = useState<"live" | "fallback">("fallback");
   const [crestMap,     setCrestMap]     = useState<Record<string, string>>({});
   const [standingsMap, setStandingsMap] = useState<Record<string, WcStanding>>({});
+
+  // ── Knockout bracket state ───────────────────────────────────────────────────
+  const [bracketData,    setBracketData]    = useState<BracketData | null>(null);
+  const [bracketLoading, setBracketLoading] = useState(true);
+  const [bracketError,   setBracketError]   = useState<string | null>(null);
+
+  // ── Active tab — auto-detected from bracket stage on first load ────────────
+  const [activeTab, setActiveTab] = useState<WcTab>("group");
+  // Ref (not state) — flips once the first bracket response decides the tab,
+  // so it never re-triggers a render and never overrides a manual switch.
+  const hasAutoSelectedRef = useRef(false);
 
   // ── DB-backed player pools — initial values are the static fallbacks ────────
   // When the DB fetch succeeds, these update with real player photos from APF.
@@ -459,7 +484,13 @@ export default function WorldCupPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/matches?source=apf&limit=200&includePast=true")
+    // source omitted (defaults to "all") — WC 2026 fixtures are synced via
+    // football-data.org (fd-*) now; /api/matches dedupes any provider
+    // duplicates itself, and this callback already filters to leagueId==="WC".
+    // limit=500 (the route's max under includePast=true) — needed so WC's
+    // knockout-stage fixtures (dated well into July) aren't truncated by
+    // matches from other leagues earlier in the kickoff-ASC ordering.
+    fetch("/api/matches?limit=500&includePast=true")
       .then(r => r.ok ? r.json() : null)
       .then((d: { matches: (RealMatch & { leagueId?: string })[] } | null) => {
         if (!d) return;
@@ -494,6 +525,46 @@ export default function WorldCupPage() {
       })
       .catch(() => {});
   }, []);
+
+  // ── Fetch knockout bracket — auto-updates when matches finish (poll on mount) ─
+  // Tab auto-selection happens right here in the response handler (not in a
+  // separate effect watching state) so we never trigger a setState-in-effect
+  // cascade — the decision is made once, at the moment fresh data arrives.
+  const fetchBracket = useCallback(() => {
+    fetch("/api/wc-bracket")
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((d: {
+        ok: boolean; stage: BracketData["stage"]; totalKnockoutMatches: number;
+        r32: BracketData["r32"]; r16: BracketData["r16"]; qf: BracketData["qf"];
+        sf: BracketData["sf"]; final: BracketData["final"]; third: BracketData["third"];
+      }) => {
+        if (!d.ok) throw new Error("Bracket fetch failed");
+        setBracketData({
+          r32: d.r32, r16: d.r16, qf: d.qf, sf: d.sf, final: d.final, third: d.third,
+          stage: d.stage, totalKnockoutMatches: d.totalKnockoutMatches,
+        });
+        setBracketError(null);
+
+        // Auto-prioritise the Knockout tab once the tournament reaches that
+        // stage — only on the very first successful load, never overriding
+        // a manual tab switch the user makes afterward.
+        if (!hasAutoSelectedRef.current) {
+          hasAutoSelectedRef.current = true;
+          if (d.stage !== "pre_knockout") setActiveTab("knockout");
+        }
+      })
+      .catch((e: Error) => setBracketError(e.message))
+      .finally(() => setBracketLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchBracket();
+  }, [fetchBracket]);
+
+  const isKnockoutLive = useMemo(
+    () => bracketData !== null && bracketData.stage !== "pre_knockout",
+    [bracketData],
+  );
 
   return (
     <main className="min-h-screen bg-bg text-text-primary font-sans relative overflow-hidden">
@@ -541,6 +612,47 @@ export default function WorldCupPage() {
           <SectionHeader title="Countdown to the Final" sub="World Cup Final · 19 Jul 2026" />
           <CountdownTimer />
         </section>
+
+        {/* ── Stage tabs ────────────────────────────────────────────────────── */}
+        <section>
+          <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.07] overflow-x-auto scrollbar-hide">
+            {WC_TABS.map(tab => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "relative flex-1 min-w-[110px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl",
+                    "text-xs font-bold transition-all duration-200",
+                    active
+                      ? "bg-primary text-white shadow-[0_0_16px_rgba(22,82,240,0.30)]"
+                      : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]",
+                  )}
+                >
+                  <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+                  {tab.label}
+                  {tab.id === "knockout" && isKnockoutLive && !active && (
+                    <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <AnimatePresence>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="space-y-10"
+          >
+
+        {activeTab === "group" && (<>
 
         {/* ── Tournament Picks ──────────────────────────────────────────────── */}
         <section className="relative overflow-hidden rounded-2xl">
@@ -604,7 +716,36 @@ export default function WorldCupPage() {
           </div>
         </section>
 
-        {/* ── Official Groups ───────────────────────────────────────────────── */}
+        {/* ── Fixtures ──────────────────────────────────────────────────────── */}
+        <section>
+          {dataSource === "live" ? (
+            <>
+              <SectionHeader title={`Group Stage Fixtures · ${wcMatches.length} matches`} sub="Live Data · football-data.org" />
+              <div className="space-y-2">
+                {wcMatches.map((m, i) => <RealWcRow key={m.id} m={m} delay={i * 0.02} />)}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-white/40">Live fixtures will appear here</p>
+              <p className="text-[11px] text-white/20 font-mono mt-1.5">Group stage is underway · Data syncs automatically</p>
+            </div>
+          )}
+        </section>
+
+        </>)}
+
+        {activeTab === "knockout" && (
+        <section>
+          <SectionHeader
+            title="Knockout Bracket"
+            sub="Round of 32 → Round of 16 → Quarter-Finals → Semi-Finals → Final"
+          />
+          <KnockoutBracket data={bracketData} loading={bracketLoading} error={bracketError} />
+        </section>
+        )}
+
+        {activeTab === "standings" && (
         <section>
           <SectionHeader title="Official Groups" sub="FIFA World Cup 2026 · Top 2 from each group advance" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -707,23 +848,10 @@ export default function WorldCupPage() {
             })}
           </div>
         </section>
+        )}
 
-        {/* ── Fixtures ──────────────────────────────────────────────────────── */}
-        <section>
-          {dataSource === "live" ? (
-            <>
-              <SectionHeader title={`Group Stage Fixtures · ${wcMatches.length} matches`} sub="Live Data · football-data.org" />
-              <div className="space-y-2">
-                {wcMatches.map((m, i) => <RealWcRow key={m.id} m={m} delay={i * 0.02} />)}
-              </div>
-            </>
-          ) : (
-            <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-8 text-center">
-              <p className="text-sm font-semibold text-white/40">Live fixtures will appear here</p>
-              <p className="text-[11px] text-white/20 font-mono mt-1.5">Group stage is underway · Data syncs automatically</p>
-            </div>
-          )}
-        </section>
+          </motion.div>
+        </AnimatePresence>
 
         {/* ── Base App future ───────────────────────────────────────────────── */}
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}

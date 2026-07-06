@@ -21,9 +21,71 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }         from '@/lib/supabase/server'
 import { MATCH_STATUS_ORDER }              from '@/lib/football/status'
+import { canonicalTeamName }               from '@/lib/football/teamAliases'
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WC duplicate-row dedup
+//
+// The `matches` table has, for a large share of WC 2026 fixtures, TWO rows
+// for the same real match under different provider prefixes (`apf-...` and
+// `fd-...`) — a pre-existing condition from when both API-Football and
+// football-data.org were synced independently. API-Football's free plan can
+// no longer update WC 2026 data at all, so any `apf-` twin is frozen at
+// whatever state it was in when the block took effect, while its `fd-` twin
+// keeps receiving live updates.
+//
+// This collapses each such pair down to ONE row per real match before it
+// reaches any page (Matches, Prediction, Match Detail), so users never see a
+// duplicate card and never see a stale "upcoming" twin for a match that has
+// actually finished. It does NOT touch the database or existing predictions
+// — both rows (and any predictions on either) remain exactly as they are;
+// this is a display-layer fix only. Grouped by (kickoff hour, canonical team
+// names) so provider timezone/naming differences don't prevent matching.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type DedupableRow = {
+  id: string
+  league_id: string
+  home_team_name: string
+  away_team_name: string
+  kickoff: string
+  status: string
+  round: string | null
+}
+
+const STATUS_RANK: Record<string, number> = { finished: 3, live: 2, postponed: 1, upcoming: 0 }
+
+function dedupeWcRows<T extends DedupableRow>(rows: T[]): T[] {
+  const groups = new Map<string, T[]>()
+  const passthrough: T[] = []
+
+  for (const row of rows) {
+    if (row.league_id !== 'WC') { passthrough.push(row); continue }
+    const hourBucket = row.kickoff.slice(0, 13) // YYYY-MM-DDTHH — tolerant of minute/provider drift
+    const key = `${hourBucket}|${canonicalTeamName(row.home_team_name)}|${canonicalTeamName(row.away_team_name)}`
+    const existing = groups.get(key)
+    if (existing) existing.push(row)
+    else groups.set(key, [row])
+  }
+
+  const deduped: T[] = [...passthrough]
+  for (const group of groups.values()) {
+    if (group.length === 1) { deduped.push(group[0]); continue }
+    // Prefer the most-resolved status, then whichever has a populated round,
+    // then the football-data.org row (the actively-maintained source).
+    const best = group.reduce((a, b) => {
+      const rankDiff = (STATUS_RANK[b.status] ?? -1) - (STATUS_RANK[a.status] ?? -1)
+      if (rankDiff !== 0) return rankDiff > 0 ? b : a
+      if (!!b.round !== !!a.round) return b.round ? b : a
+      return b.id.startsWith('fd-') && !a.id.startsWith('fd-') ? b : a
+    })
+    deduped.push(best)
+  }
+  return deduped
 }
 
 /** Returns today's date as YYYY-MM-DD in UTC. */
@@ -63,7 +125,7 @@ export async function GET(req: NextRequest) {
   function buildQuery(withDateFilter: boolean) {
     let q = supabase
       .from('matches')
-      .select('id, league_id, home_team_name, home_team_short, home_team_crest, away_team_name, away_team_short, away_team_crest, kickoff, status, home_score, away_score, actual_outcome, matchday, venue')
+      .select('id, league_id, home_team_name, home_team_short, home_team_crest, away_team_name, away_team_short, away_team_crest, kickoff, status, home_score, away_score, actual_outcome, matchday, round, venue')
       .order('kickoff', { ascending: true })
       .limit(limit)
 
@@ -100,6 +162,9 @@ export async function GET(req: NextRequest) {
 
   // ── Filter: drop rows with null/empty kickoff (shouldn't reach DB, but guard here) ──
   rows = rows.filter(m => m.kickoff && typeof m.kickoff === 'string' && m.kickoff.trim() !== '')
+
+  // ── Dedup WC provider-duplicate rows (see dedupeWcRows) ─────────────────────
+  rows = dedupeWcRows(rows)
 
   // ── Sort: live first, then kickoff ASC ─────────────────────────────────────
   rows = [...rows].sort((a, b) => {
@@ -147,6 +212,7 @@ export async function GET(req: NextRequest) {
     awayScore:     m.away_score,
     actualOutcome: m.actual_outcome,
     matchday:      m.matchday,
+    round:         (m as Record<string, unknown>).round as string | null ?? null,
     venue:         m.venue,
     community:     communityMap[m.id as string] ?? null,
   }))

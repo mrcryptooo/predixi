@@ -1,72 +1,49 @@
 /**
  * POST /api/admin/sync-wc-fixtures
  *
- * Fetches FIFA World Cup 2026 fixtures from API-Football and upserts them
- * into the `matches` table with league_id='WC' and api_source='apf'.
+ * Manual/backfill entry point for the WC fixture sync. Upserts into the
+ * `matches` table with league_id='WC'. Shares the exact same row-build +
+ * insert/update/skip logic (`lib/football/wcFixtureUpsert`) as the automatic
+ * cron at /api/cron/sync-wc-results — one upsert path, not two.
  *
- * Auth:    x-admin-key header vs ADMIN_SETTLEMENT_KEY
- * League:  API-Football league ID 1 (FIFA World Cup), season 2026
+ * Auth: x-admin-key header vs ADMIN_SETTLEMENT_KEY
  *
  * Request body (all optional):
  *   {
- *     "dryRun":  boolean   // true = call API, skip DB writes, report what would upsert
- *     "from":    string    // YYYY-MM-DD date range start (default: today)
- *     "to":      string    // YYYY-MM-DD date range end   (default: today + 7 days)
+ *     "source":  "fd" | "apf"   // default: "fd" — see note below
+ *     "dryRun":  boolean         // true = call the API, skip DB writes, report what would upsert
+ *     "from":    string          // YYYY-MM-DD — API-Football only (ignored for fd)
+ *     "to":      string          // YYYY-MM-DD — API-Football only (ignored for fd)
  *   }
  *
- * Notes:
- *   - Uses season 2026 explicitly — NOT APF_CURRENT_SEASON (which is 2025 for club leagues).
- *   - Uses the same status normalization and outcome inference as existing APF fixture sync.
- *   - Never overwrites a settled actual_outcome on existing rows.
- *   - dryRun calls APF (1 request) but skips all DB writes — safe for verification.
- *   - APF may return 0 fixtures before June 11, 2026 (tournament start). That is valid.
+ * ── Why "fd" is the default ───────────────────────────────────────────────────
+ * API-Football's free plan has NO access to the WC 2026 season at all —
+ * verified live: every /fixtures call for league=1&season=2026 returns
+ * `{"plan":"Free plans do not have access to this season, try from 2022 to 2024."}`,
+ * regardless of date range. football-data.org's free tier DOES expose the
+ * full WC 2026 schedule (group stage + entire knockout bracket) in one call
+ * to /v4/competitions/WC/matches — no date range needed, it always returns
+ * the whole tournament. `source: "apf"` is kept available and will start
+ * working automatically the moment the API-Football plan is upgraded.
+ *
+ * Never overwrites a settled actual_outcome on existing rows.
+ * dryRun calls the API but skips all DB writes — safe for verification.
  *
  * Response:
- *   { ok, dryRun, leagueId, season, from, to,
- *     apiCallsUsed, fixturesFound, inserted, updated, invalid, errors, callsToday }
+ *   { ok, dryRun, source, leagueId, from?, to?,
+ *     fixturesFound, inserted, updated, unchanged, invalid, skipped, errors }
  */
 
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSupabaseClient }        from '@/lib/supabase/server'
-import {
-  normalizeApfStatus,
-  inferOutcome,
-  validateFixture,
-}                                         from '@/lib/football/status'
 import { fetchApfFixtures }               from '@/lib/football/apiFootball'
 import { APF_WORLD_CUP }                  from '@/lib/football/apiFootballConfig'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-type WcMatchRow = {
-  id:              string
-  league_id:       string
-  home_team_id:    string
-  home_team_name:  string
-  home_team_short: string
-  away_team_id:    string
-  away_team_name:  string
-  away_team_short: string
-  kickoff:         string
-  status:          string
-  home_score:      number | null
-  away_score:      number | null
-  matchday:        number | null
-  venue:           string | null
-  actual_outcome:  string | null
-  updated_at:      string
-  home_team_crest: string | null
-  away_team_crest: string | null
-  league_logo:     string | null
-  country_flag:    string | null
-  api_source:      string
-}
-
-type UpsertStats = {
-  inserted: number; updated: number; invalid: number; errors: string[]
-}
+import { fetchFdWcMatches }               from '@/lib/football/footballDataWc'
+import {
+  upsertWcFixture,
+  upsertWcFixtureFromFd,
+  newWcUpsertStats,
+} from '@/lib/football/wcFixtureUpsert'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -79,48 +56,6 @@ function err(message: string, status: number) {
 function dateStr(d: Date): string { return d.toISOString().slice(0, 10) }
 function addDays(d: Date, n: number): Date {
   const r = new Date(d); r.setUTCDate(r.getUTCDate() + n); return r
-}
-
-function shortName(name: string): string {
-  return name
-    .replace(/^(FC|CF|AS|AC|RC|CD|SD|UD|RB|SS|SC)\s+/i, '')
-    .slice(0, 3)
-    .toUpperCase()
-}
-
-function parseMatchday(round: string | null | undefined): number | null {
-  if (!round) return null
-  const m = round.match(/(\d+)/)
-  return m ? parseInt(m[1], 10) : null
-}
-
-async function upsertMatch(
-  supabase: ReturnType<typeof getServerSupabaseClient>,
-  row:      WcMatchRow,
-  stats:    UpsertStats,
-): Promise<void> {
-  const { data: existing } = await supabase
-    .from('matches')
-    .select('id, actual_outcome')
-    .eq('id', row.id)
-    .maybeSingle()
-
-  // Never overwrite a settled outcome
-  const safeRow = existing?.actual_outcome
-    ? { ...row, actual_outcome: existing.actual_outcome }
-    : row
-
-  const { error } = await supabase
-    .from('matches')
-    .upsert(safeRow, { onConflict: 'id' })
-
-  if (error) {
-    stats.errors.push(`${row.id}: ${error.message}`)
-  } else if (existing) {
-    stats.updated++
-  } else {
-    stats.inserted++
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,12 +73,61 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { /* empty body is valid */ }
 
   const dryRun = body.dryRun === true
+  const source = body.source === 'apf' ? 'apf' : 'fd'
 
-  const today   = new Date()
-  const from    = typeof body.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.from)
+  const stats = newWcUpsertStats()
+  const supabase = getServerSupabaseClient()
+
+  // ── football-data.org path (default, working) ───────────────────────────────
+  if (source === 'fd') {
+    const result = await fetchFdWcMatches()
+
+    if (!result.ok) {
+      return NextResponse.json({
+        ok: false, error: result.error, source, leagueId: APF_WORLD_CUP.code,
+        ...(result.rateLimitHit && { rateLimitHit: true }),
+      }, { status: result.rateLimitHit ? 429 : 502 })
+    }
+
+    const fixturesFound = result.matches.length
+
+    if (!dryRun) {
+      for (const m of result.matches) {
+        await upsertWcFixtureFromFd(supabase, m, stats)
+      }
+    }
+
+    console.log(
+      dryRun
+        ? `[sync-wc-fixtures] dryRun(fd): ${fixturesFound} matches found, skipping DB write`
+        : `[sync-wc-fixtures] fd: inserted=${stats.inserted} updated=${stats.updated}` +
+          ` unchanged=${stats.unchanged} skipped=${stats.skipped} invalid=${stats.invalid} fixturesFound=${fixturesFound}`
+    )
+
+    return NextResponse.json({
+      ok:            stats.errors.length === 0,
+      dryRun,
+      source,
+      leagueId:      APF_WORLD_CUP.code,
+      fixturesFound,
+      inserted:      dryRun ? 0 : stats.inserted,
+      updated:       dryRun ? 0 : stats.updated,
+      unchanged:     dryRun ? 0 : stats.unchanged,
+      skipped:       dryRun ? 0 : stats.skipped,
+      invalid:       stats.invalid,
+      errors:        stats.errors.length > 0 ? stats.errors : undefined,
+      message:       dryRun
+        ? `Dry run — ${fixturesFound} WC matches found via football-data.org. Run with dryRun:false to write.`
+        : `WC fixtures sync complete (football-data.org).`,
+    })
+  }
+
+  // ── API-Football path (kept available; not usable on the free plan today) ──
+  const today = new Date()
+  const from  = typeof body.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.from)
     ? body.from
     : dateStr(today)
-  const to      = typeof body.to   === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.to)
+  const to    = typeof body.to   === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.to)
     ? body.to
     : dateStr(addDays(today, 7))
 
@@ -151,7 +135,6 @@ export async function POST(req: NextRequest) {
     return err('API_FOOTBALL_KEY is not configured', 500)
   }
 
-  // ── Fetch from API-Football ───────────────────────────────────────────────────
   const result = await fetchApfFixtures({
     league: APF_WORLD_CUP.id,
     season: APF_WORLD_CUP.season,   // always 2026 — never APF_CURRENT_SEASON
@@ -161,84 +144,34 @@ export async function POST(req: NextRequest) {
 
   if (!result.ok) {
     return NextResponse.json({
-      ok:           false,
-      error:        result.error,
-      leagueId:     APF_WORLD_CUP.code,
-      season:       APF_WORLD_CUP.season,
-      from,
-      to,
-      apiCallsUsed: 1,
-      callsToday:   result.callsToday ?? 0,
+      ok: false, error: result.error, source, leagueId: APF_WORLD_CUP.code,
+      season: APF_WORLD_CUP.season, from, to,
+      apiCallsUsed: 1, callsToday: result.callsToday ?? 0,
       ...(result.budgetExceeded && { budgetExceeded: true }),
       ...(result.rateLimitHit   && { rateLimitHit:   true }),
     }, { status: result.budgetExceeded ? 429 : 502 })
   }
 
-  const fixtures     = result.data
+  const fixtures      = result.data
   const fixturesFound = fixtures.length
-  const stats: UpsertStats = { inserted: 0, updated: 0, invalid: 0, errors: [] }
 
   if (!dryRun && fixturesFound > 0) {
-    const supabase = getServerSupabaseClient()
-
     for (const fx of fixtures) {
-      const status = normalizeApfStatus(fx.fixture.status.short)
-      const h = fx.goals.home
-      const a = fx.goals.away
-
-      const row: WcMatchRow = {
-        id:              `apf-${fx.fixture.id}`,
-        league_id:       APF_WORLD_CUP.code,       // 'WC'
-        home_team_id:    `apf-team-${fx.teams.home.id}`,
-        home_team_name:  fx.teams.home.name,
-        home_team_short: shortName(fx.teams.home.name),
-        away_team_id:    `apf-team-${fx.teams.away.id}`,
-        away_team_name:  fx.teams.away.name,
-        away_team_short: shortName(fx.teams.away.name),
-        kickoff:         fx.fixture.date,
-        status,
-        home_score:      h ?? null,
-        away_score:      a ?? null,
-        matchday:        parseMatchday(fx.league.round),
-        venue:           fx.fixture.venue.name ?? null,
-        actual_outcome:  inferOutcome(h, a, status),
-        updated_at:      new Date().toISOString(),
-        // Media URLs (stored in DB, never hotlinked from frontend)
-        home_team_crest: fx.teams.home.logo    ?? null,
-        away_team_crest: fx.teams.away.logo    ?? null,
-        league_logo:     fx.league.logo        ?? null,
-        country_flag:    fx.league.flag        ?? null,
-        api_source:      'apf',
-      }
-
-      const check = validateFixture({
-        id:           row.id,
-        kickoff:      row.kickoff,
-        homeTeamId:   row.home_team_id,
-        homeTeamName: row.home_team_name,
-        awayTeamId:   row.away_team_id,
-        awayTeamName: row.away_team_name,
-      })
-      if (!check.valid) { stats.invalid++; stats.errors.push(check.reason); continue }
-
-      await upsertMatch(supabase, row, stats)
+      await upsertWcFixture(supabase, fx, stats)
     }
   }
 
-  const ok = stats.errors.length === 0
-
-  if (dryRun) {
-    console.log(`[sync-wc-fixtures] dryRun: ${fixturesFound} fixtures found, skipping DB write`)
-  } else {
-    console.log(
-      `[sync-wc-fixtures] inserted=${stats.inserted} updated=${stats.updated}` +
-      ` invalid=${stats.invalid} fixturesFound=${fixturesFound}`
-    )
-  }
+  console.log(
+    dryRun
+      ? `[sync-wc-fixtures] dryRun(apf): ${fixturesFound} fixtures found, skipping DB write`
+      : `[sync-wc-fixtures] apf: inserted=${stats.inserted} updated=${stats.updated}` +
+        ` unchanged=${stats.unchanged} invalid=${stats.invalid} fixturesFound=${fixturesFound}`
+  )
 
   return NextResponse.json({
-    ok:            dryRun ? true : ok,
+    ok:            dryRun ? true : stats.errors.length === 0,
     dryRun,
+    source,
     leagueId:      APF_WORLD_CUP.code,
     season:        APF_WORLD_CUP.season,
     from,
@@ -247,11 +180,12 @@ export async function POST(req: NextRequest) {
     fixturesFound,
     inserted:      dryRun ? 0 : stats.inserted,
     updated:       dryRun ? 0 : stats.updated,
+    unchanged:     dryRun ? 0 : stats.unchanged,
     invalid:       stats.invalid,
     errors:        stats.errors.length > 0 ? stats.errors : undefined,
     callsToday:    result.callsToday,
     message:       dryRun
       ? `Dry run — ${fixturesFound} WC fixtures found for ${from}→${to}. Run with dryRun:false to write.`
-      : `WC fixtures sync complete.`,
+      : `WC fixtures sync complete (API-Football).`,
   })
 }

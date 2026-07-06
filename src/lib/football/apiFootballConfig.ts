@@ -124,3 +124,10 @@ export const APF_WORLD_CUP = {
   /** Season year = tournament year (WC uses the year of the tournament, not start year) */
   season:  2026,
 } as const
+
+/**
+ * Final match date (with a 2-day buffer for extra time / rescheduling).
+ * Used as the upper bound for the wide knockout-discovery fetch in
+ * /api/cron/sync-wc-results — never search past the tournament's own end.
+ */
+export const APF_WORLD_CUP_END_DATE = '2026-07-21'
